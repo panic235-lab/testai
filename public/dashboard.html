@@ -1,0 +1,499 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>상황판 - 인력동원상황실</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&display=swap">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+<style>
+  /* 무료 OSM 타일을 다크 테마에 맞게 반전 처리 (별도 유료 다크타일 불필요) */
+  .leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) brightness(0.95) contrast(0.9); }
+  .leaflet-container { background: var(--bg-panel-2, oklch(0.26 0.028 250)); font-family: 'Noto Sans KR', 'Malgun Gothic', system-ui, sans-serif; }
+  .leaflet-marker-icon { background: none; border: none; }
+  .leaflet-popup-content-wrapper, .leaflet-popup-tip { background: oklch(0.215 0.025 250); color: oklch(0.96 0.01 250); }
+  .leaflet-tooltip { background: oklch(0.16 0.018 250 / 0.92); color: oklch(0.96 0.01 250); border: 1px solid oklch(0.33 0.03 250); }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    --bg: oklch(0.16 0.018 250);
+    --bg-panel: oklch(0.215 0.025 250);
+    --bg-panel-2: oklch(0.26 0.028 250);
+    --bg-hover: oklch(0.24 0.026 250);
+    --border: oklch(0.33 0.03 250);
+    --text: oklch(0.96 0.01 250);
+    --text-dim: oklch(0.7 0.02 250);
+    --text-faint: oklch(0.48 0.02 250);
+    --blue: oklch(0.68 0.15 240);
+    --red: oklch(0.64 0.19 25);
+    --amber: oklch(0.78 0.15 80);
+    --green: oklch(0.72 0.15 150);
+    font-family: 'Noto Sans KR', 'Malgun Gothic', 'Apple SD Gothic Neo', system-ui, sans-serif;
+    background: var(--bg); color: var(--text);
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+  a { color: var(--blue); text-decoration: none; }
+  a:hover { color: oklch(0.78 0.13 240); }
+  .card { background: var(--bg-panel); border: 1px solid var(--border); border-radius: 12px; }
+  .btn { font-family: inherit; cursor: pointer; border: none; border-radius: 7px; font-weight: 600; }
+  .chip { border-radius: 999px; padding: 6px 14px; font-size: 12px; font-weight: 700; cursor: pointer; border: 1.5px solid var(--border); font-family: inherit; background:transparent; }
+  .team-row { display:flex; align-items:center; gap:10px; padding:9px 10px; border-radius:8px; cursor:pointer; }
+  .team-row:hover { background: var(--bg-hover); }
+  .checkbox { width:18px; height:18px; border-radius:5px; border:1.5px solid var(--border); flex-shrink:0; display:flex; align-items:center; justify-content:center; }
+  .resp-row { display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:8px; cursor:default; border:1px solid transparent; }
+  .resp-row:hover { background: var(--bg-hover); }
+  .dot { width:9px; height:9px; border-radius:50%; flex-shrink:0; }
+  @keyframes pulse { 0% { box-shadow: 0 0 0 0 oklch(0.78 0.15 80 / 0.55);} 100% { box-shadow: 0 0 0 10px oklch(0.78 0.15 80 / 0);} }
+  .pulse { animation: pulse 1.6s ease-out infinite; }
+  table { border-collapse: collapse; width: 100%; }
+  th, td { text-align: left; padding: 7px 10px; font-size: 12px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  th { color: var(--text-faint); font-weight: 600; }
+  td { color: var(--text-dim); }
+  .topbtn { padding:6px 12px; font-size:12px; }
+  @media (max-width: 1100px) {
+    body > .body-grid { grid-template-columns: 240px 1fr !important; }
+    #rightPanel { display: none !important; }
+  }
+</style>
+</head>
+<body>
+
+  <!-- top bar -->
+  <div style="display:flex; align-items:center; justify-content:space-between; padding:14px 24px; border-bottom:1px solid var(--border); flex-shrink:0; flex-wrap:wrap; gap:10px;">
+    <div style="display:flex; align-items:center; gap:16px; flex-wrap:wrap;">
+      <div style="display:flex; align-items:center; gap:8px;">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M12 2 L21 6 V12 C21 17 17 20.5 12 22 C7 20.5 3 17 3 12 V6 Z" stroke="var(--blue)" stroke-width="1.6" stroke-linejoin="round"/></svg>
+        <div style="font-size:14px; font-weight:700;">인력동원상황실</div>
+      </div>
+      <div style="width:1px; height:18px; background:var(--border);"></div>
+      <div style="display:flex; align-items:center; gap:8px;">
+        <span id="originBadge" style="font-size:11px; background:oklch(0.3 0.06 25); color:oklch(0.85 0.1 25); border-radius:5px; padding:4px 9px; font-weight:700;">-</span>
+        <span id="stageBadge" style="font-size:11px; background:var(--bg-panel-2); color:var(--text-dim); border-radius:5px; padding:4px 9px; font-weight:700;">-</span>
+      </div>
+    </div>
+
+    <div style="display:flex; align-items:center; gap:14px; flex-wrap:wrap;">
+      <div id="clock" style="font-size:12px; color:var(--text-faint);">-</div>
+      <div style="display:flex; border:1px solid var(--border); border-radius:8px; padding:2px; gap:2px;">
+        <button class="btn topbtn" id="roleSitBtn">상황실근무자</button>
+        <button class="btn topbtn" id="roleAdminBtn">관리자</button>
+      </div>
+      <a id="adminMenuBtn" href="/admin-menu.html" style="display:none;">
+        <button class="btn" style="padding:9px 14px; font-size:12px; background:var(--bg-panel-2); color:var(--text); border:1px solid var(--border); display:flex; align-items:center; gap:6px;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+          관리자 메뉴
+        </button>
+      </a>
+      <span id="whoami" style="font-size:12px; color:var(--text-faint); border:1px solid var(--border); border-radius:6px; padding:6px 10px;">-</span>
+      <button class="btn" id="logoutBtn" style="padding:6px 10px; font-size:11.5px; background:transparent; color:var(--text-faint); border:1px solid var(--border);">로그아웃</button>
+    </div>
+  </div>
+
+  <!-- body -->
+  <div class="body-grid" style="flex:1; display:grid; grid-template-columns: 296px 1fr 380px; gap:16px; padding:18px 24px; overflow:hidden;">
+
+    <!-- LEFT: 비상동원조 -->
+    <div class="card" style="display:flex; flex-direction:column; overflow:hidden;">
+      <div style="padding:14px 16px 10px; border-bottom:1px solid var(--border);">
+        <div style="font-size:13px; font-weight:700;">비상동원조 편성</div>
+        <div style="font-size:11px; color:var(--text-faint); margin-top:2px;">조를 선택하고 동원명령을 발령하세요</div>
+      </div>
+      <div id="teamList" style="flex:1; overflow-y:auto; padding:10px;"></div>
+      <div style="padding:14px 16px; border-top:1px solid var(--border);">
+        <button class="btn" id="dispatchBtn" style="width:100%; padding:14px; font-size:14px;">동원명령 발령</button>
+        <div id="dispatchHint" style="font-size:11px; color:var(--text-faint); margin-top:8px; text-align:center;">조를 1개 이상 선택하세요</div>
+      </div>
+      <div style="padding:14px 16px; border-top:1px solid var(--border); display:flex; flex-direction:column; gap:8px;">
+        <div style="font-size:12px; font-weight:700; color:var(--text-dim);">메시지 보내기 (선택 조 전체 · 대원 앱으로 전송)</div>
+        <textarea id="notifyMessage" placeholder="예: 즉시 지정 집결지로 집결 바랍니다." style="width:100%; min-height:168px; resize:vertical; background:var(--bg-panel-2); border:1px solid var(--border); border-radius:8px; padding:8px 10px; color:var(--text); font-family:inherit; font-size:12px;"></textarea>
+        <div style="display:flex; align-items:center; gap:8px;">
+          <label for="notifyPhoto" style="flex:1; display:flex; align-items:center; gap:6px; padding:7px 10px; background:var(--bg-panel-2); border:1px solid var(--border); border-radius:7px; font-size:11.5px; color:var(--text-faint); cursor:pointer; overflow:hidden; white-space:nowrap; text-overflow:ellipsis;">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" style="flex-shrink:0;"><path d="M4 8h3l2-3h6l2 3h3v11H4V8z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><circle cx="12" cy="13.5" r="3.2" stroke="currentColor" stroke-width="1.6"/></svg>
+            <span id="notifyPhotoLabel">사진 첨부 (선택)</span>
+          </label>
+          <input type="file" id="notifyPhoto" accept="image/*" style="display:none;">
+        </div>
+        <button class="btn" id="notifySendBtn" style="width:100%; padding:10px; font-size:12.5px; background:var(--bg-panel-2); color:var(--text); border:1px solid var(--border);">전송</button>
+        <div id="notifyHint" style="font-size:10.5px; color:var(--text-faint); text-align:center;"></div>
+      </div>
+    </div>
+
+    <!-- MIDDLE: map + csv -->
+    <div style="display:flex; flex-direction:column; gap:16px; overflow:hidden;">
+      <div id="mapCard" class="card" style="flex:1.3; position:relative; overflow:hidden; min-height:0; display:none;">
+        <div id="leafletMap" style="position:absolute; inset:0;"></div>
+        <div id="gatherLabel" style="position:absolute; left:14px; top:12px; z-index:1000; font-size:11px; color:var(--text-dim); background:oklch(0.16 0.018 250 / 0.85); border:1px solid var(--border); border-radius:6px; padding:5px 9px; pointer-events:none;">집결지</div>
+        <div style="position:absolute; left:14px; bottom:14px; z-index:1000; display:flex; gap:14px; background:oklch(0.16 0.018 250 / 0.85); border:1px solid var(--border); border-radius:8px; padding:8px 12px;">
+          <div style="display:flex; align-items:center; gap:5px; font-size:11px; color:var(--text-dim);"><span style="width:8px;height:8px;border-radius:50%;background:var(--red);display:inline-block;"></span>미응소</div>
+          <div style="display:flex; align-items:center; gap:5px; font-size:11px; color:var(--text-dim);"><span style="width:8px;height:8px;border-radius:50%;background:var(--amber);display:inline-block;"></span>접속(이동중)</div>
+          <div style="display:flex; align-items:center; gap:5px; font-size:11px; color:var(--text-dim);"><span style="width:8px;height:8px;border-radius:50%;background:var(--green);display:inline-block;"></span>응소(도착)</div>
+          <div style="width:1px; height:11px; background:var(--border);"></div>
+          <div style="display:flex; align-items:center; gap:5px; font-size:11px; color:var(--text-dim);"><span style="width:8px;height:8px;border-radius:50%;border:1.4px dashed var(--text-faint); display:inline-block;"></span>위치 미수집(추정 표시)</div>
+        </div>
+        <div style="position:absolute; right:14px; top:12px; z-index:1000; font-size:11px; color:var(--text-faint); background:oklch(0.16 0.018 250 / 0.85); border:1px solid var(--border); border-radius:6px; padding:5px 9px;">30초 주기 갱신</div>
+      </div>
+
+      <div id="csvCard" class="card" style="flex:1; display:none; flex-direction:column; overflow:hidden; min-height:0;">
+        <div style="display:flex; align-items:center; justify-content:space-between; padding:11px 14px; border-bottom:1px solid var(--border);">
+          <div style="font-size:12.5px; font-weight:700;">자동응소 기록 CSV</div>
+          <button class="btn" id="downloadCsvBtn" style="padding:7px 12px; font-size:11.5px; background:var(--bg-panel-2); color:var(--text-dim); border:1px solid var(--border); display:flex; align-items:center; gap:5px;">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M12 3v12m0 0l-4-4m4 4l4-4M4 21h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            CSV 다운로드
+          </button>
+        </div>
+        <div style="flex:1; overflow:auto;">
+          <table>
+            <thead><tr><th>연번</th><th>소집수령</th><th>응소시간</th><th>조</th><th>부서명</th><th>계급</th><th>성명</th><th>응소반경</th></tr></thead>
+            <tbody id="csvBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div id="emptyCard" class="card" style="flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; border-style:dashed;">
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none"><path d="M12 22s7-7.4 7-13a7 7 0 1 0-14 0c0 5.6 7 13 7 13z" stroke="var(--text-faint)" stroke-width="1.5"/><circle cx="12" cy="9" r="2.4" stroke="var(--text-faint)" stroke-width="1.5"/></svg>
+        <div style="font-size:13px; color:var(--text-faint); text-align:center;">비상동원조를 선택하고<br/>동원명령을 발령하면 위치·응소현황이 표시됩니다</div>
+      </div>
+    </div>
+
+    <!-- RIGHT: 응소현황 -->
+    <div id="rightPanel" class="card" style="display:flex; flex-direction:column; overflow:hidden;">
+      <div style="padding:14px 16px 10px; border-bottom:1px solid var(--border);">
+        <div style="font-size:13px; font-weight:700; margin-bottom:10px;">응소 현황</div>
+        <div id="filters" style="display:flex; gap:6px; flex-wrap:wrap;"></div>
+      </div>
+      <div id="respList" style="flex:1; overflow-y:auto; padding:8px;"></div>
+    </div>
+
+  </div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const qs = new URLSearchParams(location.search);
+const origin = qs.get('origin') || '';
+const stageParam = qs.get('stage') || '';
+
+const state = { selectedTeams: new Set(), expandedTeam: null, filter: 'all' };
+let myRole = null;
+let latest = null;
+
+const ORIGIN_LABEL = { city: '시·군·구', fire: '소방' };
+
+function statusColor(s) {
+  // var(--red)/--amber/--green과 동일한 값의 실제 색상 문자열(Leaflet SVG 마커에 var() 미지원 대응)
+  if (s === '미응소') return 'oklch(0.64 0.19 25)';
+  if (s === '접속(이동중)') return 'oklch(0.78 0.15 80)';
+  return 'oklch(0.72 0.15 150)';
+}
+
+// ---------- 실제 지도 (OpenStreetMap + Leaflet, 무료/키 불필요) ----------
+const DASH_DEFAULT_CENTER = [35.8714, 128.6014]; // 대구시청 인근 기본 좌표
+const DASH_BLUE = 'oklch(0.68 0.15 240)';
+let dashMap = null;
+let dashMarkersLayer = null;
+let dashGatherLayer = null;
+let dashCentered = false;
+
+function ensureDashMap() {
+  if (dashMap) return;
+  dashMap = L.map('leafletMap', { attributionControl: true }).setView(DASH_DEFAULT_CENTER, 14);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors',
+  }).addTo(dashMap);
+  dashMarkersLayer = L.layerGroup().addTo(dashMap);
+  dashGatherLayer = L.layerGroup().addTo(dashMap);
+}
+
+function renderMapLayer(data) {
+  ensureDashMap();
+  dashMarkersLayer.clearLayers();
+  dashGatherLayer.clearLayers();
+
+  const center = data.gatheringCenter || { lat: DASH_DEFAULT_CENTER[0], lng: DASH_DEFAULT_CENTER[1] };
+
+  if (Array.isArray(data.gatheringPoints) && data.gatheringPoints.length >= 3) {
+    L.polygon(data.gatheringPoints.map((p) => [p.lat, p.lng]), {
+      color: DASH_BLUE, weight: 1.5, fillOpacity: 0.1, dashArray: '4 3',
+    }).addTo(dashGatherLayer);
+  }
+
+  L.marker([center.lat, center.lng], {
+    icon: L.divIcon({
+      className: '',
+      html: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M12 22s7-7.4 7-13a7 7 0 1 0-14 0c0 5.6 7 13 7 13z" stroke="${DASH_BLUE}" stroke-width="1.8"/><circle cx="12" cy="9" r="2.4" fill="${DASH_BLUE}"/></svg>`,
+      iconSize: [20, 20], iconAnchor: [10, 20],
+    }),
+  }).addTo(dashGatherLayer);
+
+  (data.markers || []).forEach((mk) => {
+    if (mk.lat == null || mk.lng == null) return;
+    const dim = state.filter !== 'all' && mk.status !== state.filter;
+    const color = statusColor(mk.status);
+    // estimated === true → 실제 GPS 미수신, 서버가 대신 채워넣은 추정 좌표(항상 같은 자리) — 진짜 위치와 반드시 구분해서 표시
+    if (mk.estimated) {
+      L.circleMarker([mk.lat, mk.lng], {
+        radius: 7,
+        color,
+        weight: 1.6,
+        dashArray: '2 2',
+        fillColor: color,
+        fillOpacity: dim ? 0.08 : 0.18,
+        opacity: dim ? 0.22 : 0.85,
+      }).bindTooltip(`${mk.name} (${mk.team}조) ${mk.status} · 위치 미수집(추정 표시)`, { direction: 'top', offset: [0, -6] }).addTo(dashMarkersLayer);
+    } else {
+      L.circleMarker([mk.lat, mk.lng], {
+        radius: 6,
+        color: '#fff',
+        weight: 2,
+        fillColor: color,
+        fillOpacity: dim ? 0.22 : 0.95,
+        opacity: dim ? 0.22 : 1,
+      }).bindTooltip(`${mk.name} (${mk.team}조) ${mk.status}`, { direction: 'top', offset: [0, -6] }).addTo(dashMarkersLayer);
+    }
+  });
+
+  if (!dashCentered) {
+    dashMap.setView([center.lat, center.lng], 15);
+    dashCentered = true;
+  }
+  setTimeout(() => { if (dashMap) dashMap.invalidateSize(); }, 0);
+}
+
+function fmtClock() {
+  const d = new Date();
+  const days = ['일','월','화','수','목','금','토'];
+  const p = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}(${days[d.getDay()]}) ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+setInterval(() => { $('clock').textContent = fmtClock(); }, 1000 * 30);
+
+function renderTeams(teams) {
+  $('teamList').innerHTML = teams.map((t) => {
+    const checked = state.selectedTeams.has(t.id);
+    const expanded = state.expandedTeam === t.id;
+    const membersHtml = expanded
+      ? `<div style="padding:6px 10px 10px 44px; display:flex; flex-direction:column; gap:5px;">${t.members.map((m) => `<div style="font-size:11.5px; color:var(--text-dim);">${m.name} <span style="color:var(--text-faint);">· ${m.dept || '-'} ${m.rank || ''}</span></div>`).join('')}</div>`
+      : '';
+    return `<div>
+      <div class="team-row" data-toggle="${t.id}">
+        <div class="checkbox" data-check="${t.id}" style="background:${checked ? 'var(--blue)' : 'transparent'}; border-color:${checked ? 'var(--blue)' : 'var(--border)'};">
+          ${checked ? '<svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="oklch(0.14 0.02 250)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>' : ''}
+        </div>
+        <div style="width:26px; height:26px; border-radius:7px; background:var(--bg-panel-2); display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:700; flex-shrink:0;">${t.id}</div>
+        <div style="flex:1;">
+          <div style="font-size:13px; font-weight:600;">${t.id}조</div>
+          <div style="font-size:11px; color:var(--text-faint);">${t.count}명</div>
+        </div>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style="transform:${expanded ? 'rotate(90deg)' : 'rotate(0deg)'}; transition:transform .15s; flex-shrink:0;"><path d="M9 6l6 6-6 6" stroke="var(--text-faint)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+      ${membersHtml}
+    </div>`;
+  }).join('') || '<div style="padding:20px 8px; font-size:12px; color:var(--text-faint);">등록된 조가 없습니다. 관리자 메뉴 &gt; 비상동원조 편성에서 인원을 배정해 주세요.</div>';
+
+  $('teamList').querySelectorAll('[data-check]').forEach((el) => {
+    el.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const id = el.dataset.check;
+      if (state.selectedTeams.has(id)) state.selectedTeams.delete(id); else state.selectedTeams.add(id);
+      renderTeams(teams);
+      updateDispatchButton();
+    });
+  });
+  $('teamList').querySelectorAll('[data-toggle]').forEach((el) => {
+    el.addEventListener('click', () => {
+      const id = el.dataset.toggle;
+      state.expandedTeam = state.expandedTeam === id ? null : id;
+      renderTeams(teams);
+    });
+  });
+}
+
+function updateDispatchButton() {
+  const btn = $('dispatchBtn');
+  const hint = $('dispatchHint');
+  const dispatched = latest && latest.dispatched;
+  const canDispatch = state.selectedTeams.size > 0;
+  if (dispatched) {
+    btn.textContent = '동원명령 발령됨' + (latest.activatedAt ? ' · ' + new Date(latest.activatedAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false }) : '');
+    btn.style.background = 'oklch(0.3 0.07 150)';
+    btn.style.color = 'oklch(0.85 0.1 150)';
+    btn.style.opacity = '1';
+    hint.textContent = '선택된 조 전원에게 웹·앱 동시 전송 완료';
+  } else {
+    btn.textContent = '동원명령 발령';
+    btn.style.background = canDispatch ? 'var(--red)' : 'var(--bg-panel-2)';
+    btn.style.color = canDispatch ? '#fff' : 'var(--text-faint)';
+    btn.style.opacity = canDispatch || dispatched ? '1' : '0.7';
+    hint.textContent = canDispatch ? state.selectedTeams.size + '개 조 선택됨' : '조를 1개 이상 선택하세요';
+  }
+}
+
+function renderCsv(rows) {
+  $('csvBody').innerHTML = rows.map((r) => `<tr><td>${r.no}</td><td>${r.recv}</td><td>${r.arr}</td><td>${r.team}조</td><td>${r.dept || '-'}</td><td>${r.rank || '-'}</td><td>${r.name}</td><td>${r.radius}m</td></tr>`).join('')
+    || '<tr><td colspan="8" style="color:var(--text-faint);">아직 응소(도착)한 인원이 없습니다.</td></tr>';
+}
+
+function renderFilters(active) {
+  const counts = {
+    all: active.length,
+    '미응소': active.filter((p) => p.status === '미응소').length,
+    '접속(이동중)': active.filter((p) => p.status === '접속(이동중)').length,
+    '응소(도착)': active.filter((p) => p.status === '응소(도착)').length,
+  };
+  const defs = [
+    { key: 'all', label: '전체' },
+    { key: '미응소', label: '미응소' },
+    { key: '접속(이동중)', label: '접속(이동중)' },
+    { key: '응소(도착)', label: '응소(도착)' },
+  ];
+  $('filters').innerHTML = defs.map((f) => {
+    const isActive = state.filter === f.key;
+    return `<button class="chip" data-filter="${f.key}" style="background:${isActive ? 'var(--blue)' : 'transparent'}; border-color:${isActive ? 'var(--blue)' : 'var(--border)'}; color:${isActive ? 'oklch(0.14 0.02 250)' : 'var(--text-dim)'};">${f.label} ${counts[f.key]}</button>`;
+  }).join('');
+  $('filters').querySelectorAll('[data-filter]').forEach((el) => {
+    el.addEventListener('click', () => { state.filter = el.dataset.filter; renderAll(latest); });
+  });
+}
+
+function renderList(active) {
+  const rows = active.filter((p) => state.filter === 'all' || p.status === state.filter);
+  $('respList').innerHTML = rows.map((p) => {
+    const color = statusColor(p.status);
+    const time = p.status === '응소(도착)'
+      ? '응소 ' + (p.arrivedAt ? new Date(p.arrivedAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false }) : '-')
+      : '수령 ' + (p.missionUpdatedAt ? new Date(p.missionUpdatedAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false }) : '-');
+    return `<div class="resp-row">
+      <div class="dot" style="background:${color};"></div>
+      <div style="flex:1; min-width:0;">
+        <div style="font-size:12.5px; font-weight:600;">${p.name} <span style="font-weight:400; color:var(--text-faint);">${p.team}조</span></div>
+        <div style="font-size:11px; color:var(--text-faint);">${p.dept || '-'} · ${p.rank || '-'}</div>
+      </div>
+      <div style="text-align:right;">
+        <div style="font-size:11px; font-weight:700; color:${color};">${p.status}</div>
+        <div style="font-size:10.5px; color:var(--text-faint);">${time}</div>
+      </div>
+    </div>`;
+  }).join('') || (active.length ? '' : '<div style="padding:40px 16px; text-align:center; font-size:12px; color:var(--text-faint);">발령 후 대상자별 응소 상태가<br/>여기에 표시됩니다</div>');
+}
+
+function renderAll(data) {
+  latest = data;
+  $('originBadge').textContent = ORIGIN_LABEL[data.origin || origin] || '소방';
+  $('stageBadge').textContent = data.stage || '(미선택)';
+  renderTeams(data.teams);
+  updateDispatchButton();
+
+  if (data.dispatched) {
+    $('mapCard').style.display = 'block';
+    $('csvCard').style.display = 'flex';
+    $('emptyCard').style.display = 'none';
+    $('gatherLabel').textContent = data.gatheringEventName || '집결지';
+    renderMapLayer(data);
+    renderCsv(data.csvRows);
+  } else {
+    $('mapCard').style.display = 'none';
+    $('csvCard').style.display = 'none';
+    $('emptyCard').style.display = 'flex';
+    dashCentered = false;
+  }
+  renderFilters(data.active);
+  renderList(data.active);
+}
+
+async function refresh() {
+  const url = '/api/control/dashboard' + (stageParam ? `?stage=${encodeURIComponent(stageParam)}` : '');
+  const res = await fetch(url);
+  if (res.status === 401) { window.location.href = '/login.html'; return; }
+  const data = await res.json();
+  renderAll(data);
+}
+
+$('dispatchBtn').addEventListener('click', async () => {
+  if (latest && latest.dispatched) return;
+  if (state.selectedTeams.size === 0) return;
+  $('dispatchBtn').disabled = true;
+  try {
+    const res = await fetch('/api/control/dashboard/dispatch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ stage: stageParam || (latest && latest.stage), origin, teams: Array.from(state.selectedTeams) }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || '동원명령 발령에 실패했습니다.');
+    await refresh();
+  } catch (e) {
+    alert(e.message);
+  } finally {
+    $('dispatchBtn').disabled = false;
+  }
+});
+
+$('downloadCsvBtn').addEventListener('click', () => { window.location.href = '/api/control/dashboard/csv'; });
+
+$('notifyPhoto').addEventListener('change', () => {
+  const f = $('notifyPhoto').files[0];
+  $('notifyPhotoLabel').textContent = f ? f.name : '사진 첨부 (선택)';
+});
+
+$('notifySendBtn').addEventListener('click', async () => {
+  if (state.selectedTeams.size === 0) { $('notifyHint').textContent = '조를 1개 이상 선택하세요.'; return; }
+  const message = $('notifyMessage').value.trim();
+  const photoFile = $('notifyPhoto').files[0];
+  if (!message && !photoFile) { $('notifyHint').textContent = '문구를 입력하거나 사진을 첨부하세요.'; return; }
+  $('notifySendBtn').disabled = true;
+  $('notifyHint').textContent = '전송 중...';
+  try {
+    const fd = new FormData();
+    fd.append('teams', JSON.stringify(Array.from(state.selectedTeams)));
+    fd.append('message', message);
+    if (photoFile) fd.append('photo', photoFile);
+    const res = await fetch('/api/control/dashboard/notify', { method: 'POST', body: fd });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || '전송에 실패했습니다.');
+    $('notifyHint').textContent = `${data.sentCount}명에게 전송됨` + (data.failCount ? ` · 실패 ${data.failCount}건` : '');
+    $('notifyMessage').value = '';
+    $('notifyPhoto').value = '';
+    $('notifyPhotoLabel').textContent = '사진 첨부 (선택)';
+  } catch (e) {
+    $('notifyHint').textContent = e.message;
+  } finally {
+    $('notifySendBtn').disabled = false;
+  }
+});
+
+$('logoutBtn').addEventListener('click', async () => {
+  await fetch('/api/auth/logout', { method: 'POST' });
+  window.location.href = '/login.html';
+});
+
+function applyRoleUi() {
+  const isAdmin = myRole === 'admin';
+  $('roleSitBtn').style.background = !isAdmin ? 'var(--bg-panel-2)' : 'transparent';
+  $('roleSitBtn').style.color = !isAdmin ? 'var(--text)' : 'var(--text-faint)';
+  $('roleAdminBtn').style.background = isAdmin ? 'var(--bg-panel-2)' : 'transparent';
+  $('roleAdminBtn').style.color = isAdmin ? 'var(--text)' : 'var(--text-faint)';
+  $('adminMenuBtn').style.display = isAdmin ? 'block' : 'none';
+}
+$('roleSitBtn').addEventListener('click', () => {
+  if (myRole !== 'control') window.location.href = '/login.html';
+});
+$('roleAdminBtn').addEventListener('click', () => {
+  if (myRole !== 'admin') window.location.href = '/login.html?mode=admin';
+});
+
+async function init() {
+  const meRes = await fetch('/api/auth/me');
+  const me = await meRes.json();
+  if (!me.authenticated || !['control', 'admin'].includes(me.role)) { window.location.href = '/login.html'; return; }
+  myRole = me.role;
+  $('whoami').textContent = me.role === 'admin' ? `관리자${me.adminName ? ' · ' + me.adminName : ''}` : '상황실근무자';
+  applyRoleUi();
+  $('clock').textContent = fmtClock();
+  await refresh();
+  setInterval(refresh, 30000);
+}
+init();
+</script>
+</body>
+</html>

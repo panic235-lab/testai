@@ -1,0 +1,15 @@
+node_modules/
+data/*.db
+data/*.db-shm
+data/*.db-wal
+*.log
+
+# 상황실 근무자가 업로드한 사진(대원 개인정보/현장사진) — 공개 저장소에 절대 포함 금지
+public/uploads/**
+!public/uploads/.gitkeep
+
+# 환경변수 / 서비스 계정 비공개 키 (Firebase 등) — 절대 커밋 금지
+.env
+.env.*
+*serviceAccount*.json
+*firebase-adminsdk*.json

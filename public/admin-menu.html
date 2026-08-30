@@ -1,0 +1,802 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>관리자 메뉴 - 인력동원상황실</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&display=swap">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+<style>
+  .leaflet-container { font-family: 'Noto Sans KR', 'Malgun Gothic', system-ui, sans-serif; font-size: 12.5px; background: var(--bg-muted); }
+  .leaflet-marker-icon { background: none; border: none; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    --bg: oklch(0.975 0.004 250);
+    --bg-card: oklch(1 0 0);
+    --bg-muted: oklch(0.955 0.006 250);
+    --border: oklch(0.885 0.008 250);
+    --text: oklch(0.22 0.02 250);
+    --text-dim: oklch(0.48 0.015 250);
+    --text-faint: oklch(0.62 0.012 250);
+    --blue: oklch(0.56 0.16 240);
+    --blue-bg: oklch(0.94 0.03 240);
+    --red: oklch(0.56 0.19 25);
+    --amber: oklch(0.68 0.15 80);
+    --green: oklch(0.58 0.15 150);
+    background: var(--bg); color: var(--text);
+    font-family: 'Noto Sans KR', 'Malgun Gothic', 'Apple SD Gothic Neo', system-ui, sans-serif;
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+  a { color: var(--blue); text-decoration: none; }
+  a:hover { color: oklch(0.46 0.17 240); }
+  .card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; }
+  .btn { font-family: inherit; cursor: pointer; border: none; border-radius: 7px; font-weight: 600; }
+  .btn:disabled { opacity: .6; cursor: default; }
+  .tab { padding: 10px 16px; font-size: 13px; font-weight: 600; cursor: pointer; border: none; background: none; font-family: inherit; border-bottom: 2px solid transparent; }
+  table { border-collapse: collapse; width: 100%; }
+  th, td { text-align: left; padding: 10px 12px; font-size: 12.5px; border-bottom: 1px solid var(--border); }
+  th { color: var(--text-faint); font-weight: 600; background: var(--bg-muted); }
+  td { color: var(--text-dim); }
+  .field { background: var(--bg-card); border: 1px solid var(--border); color: var(--text); border-radius: 7px; padding: 9px 11px; font-size: 13px; font-family: inherit; outline: none; }
+  .field:focus { border-color: var(--blue); }
+  .toggle { width: 38px; height: 22px; border-radius: 999px; position: relative; cursor: pointer; flex-shrink: 0; }
+  .toggle-knob { width: 18px; height: 18px; border-radius: 50%; background: #fff; position: absolute; top: 2px; transition: left .15s; box-shadow: 0 1px 2px rgba(0,0,0,.3); }
+  .person-chip { padding: 8px 10px; border-radius: 8px; font-size: 12px; cursor: pointer; display:flex; flex-direction:column; gap:1px; }
+  .teamgrid { display:grid; grid-template-columns: repeat(7, 1fr); gap:10px; }
+  @media (max-width: 1100px) { .teamgrid { grid-template-columns: repeat(4, 1fr); } }
+  .errbox { background: oklch(0.94 0.06 25); color: oklch(0.42 0.14 25); border-radius:7px; padding:9px 12px; font-size:12px; margin-top:8px; }
+  .okbox { background: oklch(0.94 0.06 150); color: oklch(0.35 0.1 150); border-radius:7px; padding:9px 12px; font-size:12px; margin-top:8px; }
+</style>
+</head>
+<body>
+
+  <div style="display:flex; align-items:center; justify-content:space-between; padding:14px 24px; border-bottom:1px solid var(--border); background:var(--bg-card); flex-shrink:0; flex-wrap:wrap; gap:10px;">
+    <div style="display:flex; align-items:center; gap:10px;">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M12 2 L21 6 V12 C21 17 17 20.5 12 22 C7 20.5 3 17 3 12 V6 Z" stroke="var(--blue)" stroke-width="1.6" stroke-linejoin="round"/></svg>
+      <div style="font-size:14px; font-weight:700;">인력동원상황실 · 관리자</div>
+    </div>
+    <div style="display:flex; align-items:center; gap:10px;">
+      <a href="/dashboard.html" style="font-size:12px; border:1px solid var(--border); border-radius:6px; padding:6px 10px; color:var(--text-dim);">상황판으로</a>
+      <span id="whoami" style="font-size:12px; color:var(--text-faint); border:1px solid var(--border); border-radius:6px; padding:6px 10px;">-</span>
+      <button class="btn" id="logoutBtn" style="padding:6px 10px; font-size:11.5px; background:transparent; color:var(--text-faint); border:1px solid var(--border);">로그아웃</button>
+    </div>
+  </div>
+
+  <div id="tabBar" style="display:flex; gap:4px; padding:0 24px; border-bottom:1px solid var(--border); background:var(--bg-card); flex-shrink:0; overflow-x:auto;"></div>
+
+  <div id="tabBody" style="flex:1; padding:22px 24px; overflow:auto;"></div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const TEAM_IDS = ['A','B','C','D','E','F'];
+const TABS = [
+  { key: 'personnel', label: '인력 마스터' },
+  { key: 'teams', label: '비상동원조 편성' },
+  { key: 'settings', label: '상황판 설정' },
+  { key: 'gathering', label: '집결지 지정' },
+  { key: 'accounts', label: '관리자 계정' },
+  { key: 'devicecode', label: '기기등록코드' },
+];
+const ORIGIN_LABEL_FALLBACK = { city: '시·군·구', fire: '소방' };
+
+const state = {
+  tab: 'personnel',
+  addOpen: false,
+  addAdminOpen: false,
+  selectedPersonId: null,
+  uploadOpen: false,
+  uploadFile: null,
+  uploadResult: null,
+  override: false,
+  gatherPoints: [],
+  previewAreaM2: 0,
+  eventName: '',
+  codeVisible: false,
+  geocodeResults: [],
+  geocodeQuery: '',
+};
+
+let personnel = [];
+let originButtons = [];
+let stagesByOrigin = {};
+let admins = [];
+let gatheringConfig = null;
+let gatheringHistory = [];
+let deviceCode = null;
+
+function fmtDateTime(iso) {
+  if (!iso) return '-';
+  const d = new Date(iso);
+  const p = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+function areaLabel(m2) {
+  if (!m2) return '-';
+  return m2 >= 10000 ? (m2 / 10000).toFixed(2) + '㏊' : Math.round(m2).toLocaleString() + '㎡';
+}
+
+async function api(path, opts) {
+  const res = await fetch('/api/admin' + path, {
+    headers: opts && opts.body && !(opts.body instanceof FormData) ? { 'Content-Type': 'application/json' } : undefined,
+    ...opts,
+  });
+  if (res.status === 401) { window.location.href = '/login.html?mode=admin'; throw new Error('인증 필요'); }
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || '요청에 실패했습니다.');
+  return data;
+}
+
+function renderTabs() {
+  $('tabBar').innerHTML = TABS.map((t) => {
+    const active = state.tab === t.key;
+    return `<button class="tab" data-tab="${t.key}" style="color:${active ? 'var(--blue)' : 'var(--text-faint)'}; border-bottom-color:${active ? 'var(--blue)' : 'transparent'};">${t.label}</button>`;
+  }).join('');
+  $('tabBar').querySelectorAll('[data-tab]').forEach((el) => {
+    el.addEventListener('click', () => { state.tab = el.dataset.tab; state.addOpen = false; state.addAdminOpen = false; renderTabs(); renderBody(); loadTab(state.tab); });
+  });
+}
+
+// ---------- 인력 마스터 ----------
+function renderPersonnelTab() {
+  const rows = personnel.map((p, i) => `
+    <tr data-row="${p.id}">
+      <td>${i + 1}</td>
+      <td style="color:var(--text); font-weight:600;">${p.name}</td>
+      <td>${p.dept || '-'}</td>
+      <td>${p.rank || '-'}</td>
+      <td>${p.phone}</td>
+      <td><span style="background:var(--blue-bg); color:var(--blue); border-radius:5px; padding:2px 8px; font-size:11.5px; font-weight:700;">${p.team ? p.team + '조' : '미배정'}</span></td>
+      <td style="text-align:right;">
+        <a href="#" data-edit="${p.id}" style="font-size:12px; margin-right:10px;">수정</a>
+        <a href="#" data-del="${p.id}" style="font-size:12px; color:var(--red);">삭제</a>
+      </td>
+    </tr>`).join('') || `<tr><td colspan="7" style="color:var(--text-faint); text-align:center;">등록된 인원이 없습니다.</td></tr>`;
+
+  return `
+    <div class="card" style="overflow:hidden;">
+      <div style="display:flex; align-items:center; justify-content:space-between; padding:14px 16px; border-bottom:1px solid var(--border);">
+        <div>
+          <div style="font-size:14px; font-weight:700;">인력 마스터 관리</div>
+          <div style="font-size:11.5px; color:var(--text-faint); margin-top:2px;">동원 대상 전체 인력 명단 · 비상동원조 편성·자동응소 CSV가 이 명단을 참조합니다</div>
+        </div>
+        <button class="btn" id="toggleAddBtn" style="padding:9px 14px; font-size:12.5px; background:var(--blue); color:#fff;">+ 대원 추가</button>
+      </div>
+      <div id="addRow" style="display:${state.addOpen ? 'flex' : 'none'}; gap:8px; padding:12px 16px; background:var(--bg-muted); border-bottom:1px solid var(--border); flex-wrap:wrap;">
+        <input class="field" id="newName" placeholder="성명" style="width:110px;"/>
+        <input class="field" id="newDept" placeholder="부서명" style="width:140px;"/>
+        <input class="field" id="newRank" placeholder="계급" style="width:100px;"/>
+        <input class="field" id="newPhone" placeholder="연락처" style="width:140px;"/>
+        <select class="field" id="newTeam" style="width:90px;"><option value="">조 없음</option>${TEAM_IDS.map((t) => `<option value="${t}">${t}</option>`).join('')}</select>
+        <button class="btn" id="savePersonBtn" style="padding:9px 14px; font-size:12.5px; background:var(--blue); color:#fff;">저장</button>
+        <button class="btn" id="cancelAddBtn" style="padding:9px 14px; font-size:12.5px; background:var(--bg-card); color:var(--text-dim); border:1px solid var(--border);">취소</button>
+        <div id="addErr" style="width:100%; display:none;" class="errbox"></div>
+      </div>
+      <table>
+        <thead><tr><th>연번</th><th>성명</th><th>부서명</th><th>계급</th><th>연락처</th><th>조</th><th></th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+}
+
+function bindPersonnelTab() {
+  $('toggleAddBtn').addEventListener('click', () => { state.addOpen = !state.addOpen; renderBody(); });
+  const cancelBtn = $('cancelAddBtn');
+  if (cancelBtn) cancelBtn.addEventListener('click', () => { state.addOpen = false; renderBody(); });
+  const saveBtn = $('savePersonBtn');
+  if (saveBtn) saveBtn.addEventListener('click', async () => {
+    const body = {
+      name: $('newName').value.trim(),
+      dept: $('newDept').value.trim(),
+      rank: $('newRank').value.trim(),
+      phone: $('newPhone').value.trim(),
+      team: $('newTeam').value || null,
+    };
+    const errBox = $('addErr');
+    errBox.style.display = 'none';
+    try {
+      await api('/personnel', { method: 'POST', body: JSON.stringify(body) });
+      state.addOpen = false;
+      await loadTab('personnel');
+    } catch (e) {
+      errBox.textContent = e.message;
+      errBox.style.display = 'block';
+    }
+  });
+  document.querySelectorAll('[data-del]').forEach((el) => el.addEventListener('click', async (e) => {
+    e.preventDefault();
+    const id = el.dataset.del;
+    if (!confirm('해당 인원을 삭제하시겠습니까?')) return;
+    await api('/personnel/' + id, { method: 'DELETE' });
+    await loadTab('personnel');
+  }));
+  document.querySelectorAll('[data-edit]').forEach((el) => el.addEventListener('click', (e) => {
+    e.preventDefault();
+    const id = Number(el.dataset.edit);
+    const p = personnel.find((x) => x.id === id);
+    if (!p) return;
+    const row = document.querySelector(`tr[data-row="${id}"]`);
+    row.innerHTML = `
+      <td></td>
+      <td><input class="field" id="editName" value="${p.name}" style="width:90px;"/></td>
+      <td><input class="field" id="editDept" value="${p.dept || ''}" style="width:110px;"/></td>
+      <td><input class="field" id="editRank" value="${p.rank || ''}" style="width:80px;"/></td>
+      <td><input class="field" id="editPhone" value="${p.phone}" style="width:120px;"/></td>
+      <td><select class="field" id="editTeam" style="width:80px;"><option value="">조 없음</option>${TEAM_IDS.map((t) => `<option value="${t}" ${p.team === t ? 'selected' : ''}>${t}</option>`).join('')}</select></td>
+      <td style="text-align:right;"><a href="#" id="saveEditBtn" style="font-size:12px; margin-right:10px;">저장</a><a href="#" id="cancelEditBtn" style="font-size:12px; color:var(--text-faint);">취소</a></td>
+    `;
+    $('saveEditBtn').addEventListener('click', async (ev) => {
+      ev.preventDefault();
+      await api('/personnel/' + id, { method: 'PUT', body: JSON.stringify({
+        name: $('editName').value.trim(),
+        dept: $('editDept').value.trim(),
+        rank: $('editRank').value.trim(),
+        phone: $('editPhone').value.trim(),
+        team: $('editTeam').value || null,
+      }) });
+      await loadTab('personnel');
+    });
+    $('cancelEditBtn').addEventListener('click', (ev) => { ev.preventDefault(); renderBody(); bindTabEvents(); });
+  }));
+}
+
+// ---------- 비상동원조 편성 ----------
+function renderTeamsTab() {
+  const selected = personnel.find((p) => p.id === state.selectedPersonId);
+  const cols = [...TEAM_IDS, null];
+  const colsHtml = cols.map((team) => {
+    const list = personnel.filter((p) => p.team === team);
+    const chips = list.map((p) => {
+      const sel = p.id === state.selectedPersonId;
+      return `<div class="person-chip" data-pick="${p.id}" style="background:${sel ? 'var(--blue-bg)' : 'var(--bg-muted)'}; border:1.5px solid ${sel ? 'var(--blue)' : 'transparent'};">
+        <div style="font-weight:700; color:${sel ? 'var(--blue)' : 'var(--text)'};">${p.name}</div>
+        <div style="font-size:10.5px; color:var(--text-faint);">${p.dept || '-'} · ${p.rank || '-'}</div>
+      </div>`;
+    }).join('');
+    return `<div class="card" data-team-col="${team || ''}" style="min-height:520px; display:flex; flex-direction:column; cursor:${state.selectedPersonId ? 'pointer' : 'default'};">
+      <div style="padding:11px 12px; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between;">
+        <div style="font-size:13px; font-weight:700;">${team ? team + '조' : '미배정'}</div>
+        <div style="font-size:11px; color:var(--text-faint);">${list.length}명</div>
+      </div>
+      <div style="flex:1; padding:8px; display:flex; flex-direction:column; gap:6px; overflow-y:auto;">${chips}</div>
+    </div>`;
+  }).join('');
+
+  const uploadResultHtml = state.uploadResult
+    ? `<div class="okbox" style="display:flex; align-items:center; gap:8px; margin-bottom:14px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M20 6 9 17l-5-5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>${state.uploadResult.fileName} 업로드 완료 · 신규 ${state.uploadResult.created}명 · 갱신 ${state.uploadResult.updated}명 · ${fmtDateTime(new Date().toISOString())}</div>`
+    : '';
+
+  return `
+    <div>
+      <div style="display:flex; align-items:flex-start; justify-content:space-between; margin-bottom:14px; gap:16px; flex-wrap:wrap;">
+        <div>
+          <div style="font-size:14px; font-weight:700;">비상동원조 편성 (A~F)</div>
+          <div style="font-size:11.5px; color:var(--text-faint); margin-top:2px;">인원을 선택한 뒤 배정할 조를 클릭하세요 · 1인 1조 원칙 — 다른 조로 이동 시 기존 조에서 자동 해제됩니다</div>
+        </div>
+        <div style="display:flex; align-items:center; gap:8px; flex-shrink:0; flex-wrap:wrap;">
+          ${selected ? `<div style="font-size:12px; background:var(--blue-bg); color:var(--blue); border-radius:7px; padding:8px 12px; font-weight:600; white-space:nowrap;">${selected.name} 선택됨 — 배정할 조를 클릭</div>` : ''}
+          <a href="/api/admin/personnel/csv" style="padding:9px 14px; font-size:12.5px; background:var(--bg-card); color:var(--text-dim); border:1px solid var(--border); white-space:nowrap; border-radius:7px; display:inline-block;">⇩ CSV 다운로드</a>
+          <button class="btn" id="toggleUploadBtn" style="padding:9px 14px; font-size:12.5px; background:var(--blue); color:#fff; white-space:nowrap;">⇧ 엑셀 업로드</button>
+        </div>
+      </div>
+
+      <div id="uploadPanel" style="display:${state.uploadOpen ? 'flex' : 'none'}; align-items:center; gap:12px; padding:14px 16px; background:var(--bg-muted); border:1.5px dashed var(--border); border-radius:10px; margin-bottom:14px; flex-wrap:wrap;">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" style="flex-shrink:0; color:var(--text-faint);"><path d="M12 16V4M12 4l-4 4M12 4l4 4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+        <div style="flex:1; min-width:200px;">
+          <div id="uploadFileLabel" style="font-size:12.5px; font-weight:600; color:var(--text);">${state.uploadFile ? state.uploadFile.name : '업로드할 엑셀 또는 CSV 파일을 선택하세요'}</div>
+          <div style="font-size:11px; color:var(--text-faint); margin-top:2px;">지원 형식: .xlsx, .xls, .csv · 열 구성: 성명, 부서명, 계급, 연락처, 조</div>
+        </div>
+        <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" style="display:none;"/>
+        <button class="btn" id="pickFileBtn" style="padding:9px 14px; font-size:12.5px; background:var(--bg-card); color:var(--text-dim); border:1px solid var(--border); white-space:nowrap;">파일 선택</button>
+        <button class="btn" id="confirmUploadBtn" style="padding:9px 14px; font-size:12.5px; background:${state.uploadFile ? 'var(--blue)' : 'var(--border)'}; color:${state.uploadFile ? '#fff' : 'var(--text-faint)'}; white-space:nowrap;">업로드</button>
+        <button class="btn" id="cancelUploadBtn" style="padding:9px 14px; font-size:12.5px; background:var(--bg-card); color:var(--text-dim); border:1px solid var(--border);">취소</button>
+        <div id="uploadErr" style="width:100%; display:none;" class="errbox"></div>
+      </div>
+
+      ${uploadResultHtml}
+
+      <div class="teamgrid">${colsHtml}</div>
+    </div>`;
+}
+
+function bindTeamsTab() {
+  document.querySelectorAll('[data-pick]').forEach((el) => el.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const id = Number(el.dataset.pick);
+    state.selectedPersonId = state.selectedPersonId === id ? null : id;
+    renderBody();
+  }));
+  document.querySelectorAll('[data-team-col]').forEach((el) => el.addEventListener('click', async () => {
+    if (!state.selectedPersonId) return;
+    const team = el.dataset.teamCol || null;
+    await api(`/personnel/${state.selectedPersonId}/team`, { method: 'POST', body: JSON.stringify({ team }) });
+    state.selectedPersonId = null;
+    await loadTab('teams');
+  }));
+  $('toggleUploadBtn').addEventListener('click', () => { state.uploadOpen = !state.uploadOpen; state.uploadFile = null; renderBody(); });
+  const cancelUpload = $('cancelUploadBtn');
+  if (cancelUpload) cancelUpload.addEventListener('click', () => { state.uploadOpen = false; state.uploadFile = null; renderBody(); });
+  const pickFile = $('pickFileBtn');
+  if (pickFile) pickFile.addEventListener('click', () => $('fileInput').click());
+  const fileInput = $('fileInput');
+  if (fileInput) fileInput.addEventListener('change', () => {
+    state.uploadFile = fileInput.files[0] || null;
+    renderBody();
+  });
+  const confirmUpload = $('confirmUploadBtn');
+  if (confirmUpload) confirmUpload.addEventListener('click', async () => {
+    if (!state.uploadFile) return;
+    const errBox = $('uploadErr');
+    errBox.style.display = 'none';
+    const fd = new FormData();
+    fd.append('file', state.uploadFile);
+    try {
+      const data = await api('/personnel/upload', { method: 'POST', body: fd });
+      state.uploadResult = data;
+      state.uploadOpen = false;
+      state.uploadFile = null;
+      await loadTab('teams');
+    } catch (e) {
+      errBox.textContent = e.message;
+      errBox.style.display = 'block';
+    }
+  });
+}
+
+// ---------- 상황판 설정 ----------
+function renderSettingsTab() {
+  const buttonsHtml = originButtons.map((b) => `
+    <div style="display:flex; align-items:center; justify-content:space-between; padding:11px 8px; border-bottom:1px solid var(--border);">
+      <div style="font-size:13px; font-weight:600;" id="btnLabel-${b.id}">[${b.label}]</div>
+      <a href="#" data-editbtn="${b.id}" style="font-size:12px;">수정</a>
+    </div>`).join('');
+
+  const originLabelOf = (id) => (originButtons.find((b) => b.id === id) || {}).label || ORIGIN_LABEL_FALLBACK[id] || id;
+  const groupsHtml = Object.keys(stagesByOrigin).map((origin) => {
+    const items = stagesByOrigin[origin] || [];
+    const itemsHtml = items.map((s) => `
+      <div style="display:flex; align-items:center; justify-content:space-between; padding:9px 8px; border-bottom:1px solid var(--border);">
+        <div style="font-size:12.5px; color:var(--text-dim);">${s.name}</div>
+        <a href="#" data-delstage="${s.id}" style="font-size:11.5px; color:var(--red);">삭제</a>
+      </div>`).join('') || `<div style="padding:12px 8px; font-size:12px; color:var(--text-faint);">등록된 항목이 없습니다.</div>`;
+    return `<div class="card" style="overflow:hidden;">
+      <div style="display:flex; align-items:center; justify-content:space-between; padding:12px 16px; border-bottom:1px solid var(--border);">
+        <div style="font-size:13.5px; font-weight:700;">${originLabelOf(origin)} 상황단계 항목</div>
+        <button class="btn" data-addstage="${origin}" style="padding:7px 12px; font-size:12px; background:var(--blue); color:#fff;">+ 항목 추가</button>
+      </div>
+      <div style="padding:4px 8px;">${itemsHtml}</div>
+    </div>`;
+  }).join('');
+
+  return `
+    <div style="display:grid; grid-template-columns: 380px 1fr; gap:18px;">
+      <div class="card" style="overflow:hidden;">
+        <div style="padding:14px 16px; border-bottom:1px solid var(--border);">
+          <div style="font-size:14px; font-weight:700;">초기화면 버튼 구성</div>
+          <div style="font-size:11.5px; color:var(--text-faint); margin-top:2px;">상황판 초기화면에 노출되는 버튼입니다 (현재 ${originButtons.length}종)</div>
+        </div>
+        <div style="padding:6px 10px;">${buttonsHtml}</div>
+        <div style="padding:12px 16px; font-size:11px; color:var(--text-faint); border-top:1px solid var(--border); line-height:1.6;">향후 버튼 종류 확장에 대비한 설정 영역입니다.</div>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:16px;">${groupsHtml}</div>
+    </div>`;
+}
+
+function bindSettingsTab() {
+  document.querySelectorAll('[data-editbtn]').forEach((el) => el.addEventListener('click', async (e) => {
+    e.preventDefault();
+    const id = el.dataset.editbtn;
+    const current = (originButtons.find((b) => b.id === id) || {}).label || '';
+    const next = prompt('버튼 이름을 입력하세요.', current);
+    if (!next || !next.trim()) return;
+    await api('/origin-buttons/' + id, { method: 'PUT', body: JSON.stringify({ label: next.trim() }) });
+    await loadTab('settings');
+  }));
+  document.querySelectorAll('[data-addstage]').forEach((el) => el.addEventListener('click', async () => {
+    const origin = el.dataset.addstage;
+    const name = prompt('추가할 상황단계 이름을 입력하세요.');
+    if (!name || !name.trim()) return;
+    await api('/stages', { method: 'POST', body: JSON.stringify({ origin, name: name.trim() }) });
+    await loadTab('settings');
+  }));
+  document.querySelectorAll('[data-delstage]').forEach((el) => el.addEventListener('click', async (e) => {
+    e.preventDefault();
+    if (!confirm('이 상황단계 항목을 삭제하시겠습니까?')) return;
+    await api('/stages/' + el.dataset.delstage, { method: 'DELETE' });
+    await loadTab('settings');
+  }));
+}
+
+// ---------- 집결지 지정 (실제 지도: OpenStreetMap + Leaflet, 무료/키 불필요) ----------
+const GATHER_DEFAULT_CENTER = [35.8714, 128.6014]; // 대구시청 인근 기본 좌표
+const GATHER_BLUE = '#2f6fe0';
+let gatherMapInstance = null;
+let gatherMarkersLayer = null;
+let gatherPolyLayer = null;
+
+function destroyGatherMap() {
+  if (gatherMapInstance) {
+    gatherMapInstance.remove();
+    gatherMapInstance = null;
+    gatherMarkersLayer = null;
+    gatherPolyLayer = null;
+  }
+}
+
+function gatherNumberIcon(n) {
+  return L.divIcon({
+    className: '',
+    html: `<div style="width:24px; height:24px; border-radius:50%; background:${GATHER_BLUE}; color:#fff; font-size:11px; font-weight:700; display:flex; align-items:center; justify-content:center; border:2px solid #fff; box-shadow:0 1px 4px rgba(0,0,0,.3);">${n}</div>`,
+    iconSize: [24, 24],
+    iconAnchor: [12, 12],
+  });
+}
+
+function drawGatherOverlay() {
+  if (!gatherMapInstance) return;
+  gatherMarkersLayer.clearLayers();
+  gatherPolyLayer.clearLayers();
+  state.gatherPoints.forEach((p, i) => {
+    L.marker([p.lat, p.lng], { icon: gatherNumberIcon(i + 1) }).addTo(gatherMarkersLayer);
+  });
+  if (state.gatherPoints.length >= 2) {
+    L.polygon(state.gatherPoints.map((p) => [p.lat, p.lng]), {
+      color: GATHER_BLUE, weight: 2, dashArray: '4 3', fillOpacity: 0.15,
+    }).addTo(gatherPolyLayer);
+  }
+}
+
+function mountGatherMap() {
+  const el = document.getElementById('gatherMap');
+  if (!el || typeof L === 'undefined') return;
+  destroyGatherMap();
+  gatherMapInstance = L.map(el).setView(state.mapCenter || GATHER_DEFAULT_CENTER, state.mapZoom || 14);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors',
+  }).addTo(gatherMapInstance);
+  gatherMarkersLayer = L.layerGroup().addTo(gatherMapInstance);
+  gatherPolyLayer = L.layerGroup().addTo(gatherMapInstance);
+  gatherMapInstance.on('moveend', () => {
+    const c = gatherMapInstance.getCenter();
+    state.mapCenter = [c.lat, c.lng];
+    state.mapZoom = gatherMapInstance.getZoom();
+  });
+  if (state.override) {
+    gatherMapInstance.on('click', (e) => {
+      if (state.gatherPoints.length >= 4) return;
+      state.gatherPoints = [...state.gatherPoints, { lat: e.latlng.lat, lng: e.latlng.lng }];
+      state.previewAreaM2 = computeAreaM2(state.gatherPoints);
+      renderBody();
+    });
+  }
+  drawGatherOverlay();
+  setTimeout(() => { if (gatherMapInstance) gatherMapInstance.invalidateSize(); }, 0);
+}
+
+function renderGatheringTab() {
+  const points = state.gatherPoints;
+  const hasFour = points.length === 4;
+  const slotsHtml = [0, 1, 2, 3].map((i) => {
+    const p = points[i];
+    return `<div style="display:flex; align-items:center; gap:8px; padding:8px 10px; background:${p ? 'var(--bg-card)' : 'var(--bg-muted)'}; border-radius:7px; border:1px solid ${p ? 'var(--blue)' : 'var(--border)'};">
+      <div style="width:20px; height:20px; border-radius:50%; background:${p ? 'var(--blue)' : 'var(--bg-card)'}; color:${p ? '#fff' : 'var(--text-faint)'}; font-size:11px; font-weight:700; display:flex; align-items:center; justify-content:center; flex-shrink:0;">${i + 1}</div>
+      <div style="font-size:12px; color:${p ? 'var(--text)' : 'var(--text-faint)'};">${p ? p.lat.toFixed(4) + ', ' + p.lng.toFixed(4) : '지도를 클릭하거나 주소 검색으로 지정'}</div>
+    </div>`;
+  }).join('');
+
+  const geocodeHtml = state.geocodeResults.length ? `<div style="display:flex; flex-direction:column; gap:4px; margin-top:6px; max-height:140px; overflow-y:auto;">
+    ${state.geocodeResults.map((r, i) => `<div data-geopick="${i}" style="font-size:11.5px; padding:7px 9px; background:var(--bg-muted); border-radius:6px; cursor:pointer; color:var(--text-dim);">${r.displayName}</div>`).join('')}
+  </div>` : '';
+
+  const overridePanel = state.override ? `
+    <div style="display:flex; flex-direction:column; gap:10px;">
+      <div>
+        <div style="font-size:11.5px; color:var(--text-dim); margin-bottom:4px;">사건명</div>
+        <input class="field" id="eventNameInput" style="width:100%;" placeholder="예: 신천동 하천 범람 대응" value="${state.eventName || ''}"/>
+      </div>
+      <div>
+        <div style="font-size:11.5px; color:var(--text-dim); margin-bottom:4px;">주소 검색</div>
+        <div style="display:flex; gap:6px;">
+          <input class="field" id="geocodeInput" style="flex:1;" placeholder="예: 대구광역시 중구 공평로 88" value="${state.geocodeQuery || ''}"/>
+          <button class="btn" id="geocodeBtn" style="padding:9px 12px; font-size:12px; background:var(--bg-card); color:var(--text-dim); border:1px solid var(--border);">검색</button>
+        </div>
+        ${geocodeHtml}
+      </div>
+      <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:8px;">
+        <div style="font-size:11.5px; color:var(--text-dim); line-height:1.5;">지도에서 4개 지점을 순서대로 클릭(또는 검색 결과 선택)하면 그 4점을 잇는 사각형이 집결 구역으로 지정됩니다</div>
+        <a href="#" id="resetPointsBtn" style="font-size:11.5px; color:var(--red); flex-shrink:0;">초기화</a>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:6px;">${slotsHtml}</div>
+      ${hasFour ? `<div style="font-size:11.5px; color:var(--text-dim); background:var(--bg-muted); border-radius:7px; padding:8px 10px;">지정 면적 약 <strong style="color:var(--text);">${areaLabel(state.previewAreaM2 || 0)}</strong> (지도 클릭 좌표 기준 추정치)</div>` : ''}
+      <button class="btn" id="saveGatherBtn" style="padding:11px; font-size:13px; background:${hasFour ? 'var(--blue)' : 'var(--border)'}; color:${hasFour ? '#fff' : 'var(--text-faint)'}; margin-top:4px;" ${hasFour ? '' : 'disabled'}>저장</button>
+      <div id="gatherErr" style="display:none;" class="errbox"></div>
+    </div>` : '';
+
+  const mapPanel = `
+    <div id="gatherMap" style="position:absolute; inset:0; ${state.override ? 'cursor:crosshair;' : ''}"></div>
+    ${state.override && points.length === 0 ? `<div style="position:absolute; left:50%; top:14px; transform:translateX(-50%); z-index:1000; font-size:12px; color:var(--text-faint); background:var(--bg-card); border:1px solid var(--border); border-radius:7px; padding:8px 12px; pointer-events:none; white-space:nowrap;">지도를 클릭해 1번 지점부터 지정하세요</div>` : ''}
+    ${!state.override ? `<div style="position:absolute; left:50%; top:14px; transform:translateX(-50%); z-index:1000; font-size:11.5px; color:var(--text-faint); background:var(--bg-card); border:1px solid var(--border); border-radius:7px; padding:6px 10px; pointer-events:none; white-space:nowrap;">대상자 개인별 근무지 좌표 사용 중 (참고용 지도)</div>` : ''}`;
+
+  const historyRows = gatheringHistory.map((h) => `
+    <tr>
+      <td style="color:var(--text); font-weight:600;">${h.eventName || '(이름 없음)'}</td>
+      <td>${h.points && h.points[0] ? h.points[0].lat.toFixed(4) + ', ' + h.points[0].lng.toFixed(4) + ' 외 3점' : '-'}</td>
+      <td>약 ${areaLabel(h.areaM2)}</td>
+      <td>${fmtDateTime(h.createdAt)}</td>
+    </tr>`).join('') || `<tr><td colspan="4" style="text-align:center; color:var(--text-faint);">지정 이력이 없습니다.</td></tr>`;
+
+  return `
+    <div>
+      <div style="display:grid; grid-template-columns: 420px 1fr; gap:18px;">
+        <div class="card" style="padding:18px;">
+          <div style="font-size:14px; font-weight:700; margin-bottom:4px;">집결지 지정</div>
+          <div style="font-size:11.5px; color:var(--text-faint); margin-bottom:16px; line-height:1.6;">기본값은 대상자 개인별 근무지 좌표입니다. 특정 사건에 한해 별도 집결지를 지정하면 그 값이 우선 적용됩니다.</div>
+          <div style="display:flex; gap:6px; margin-bottom:16px;">
+            <button class="btn" id="useDefaultBtn" style="flex:1; padding:10px; font-size:12.5px; background:${!state.override ? 'var(--blue)' : 'var(--bg-card)'}; color:${!state.override ? '#fff' : 'var(--text-dim)'}; border:1.5px solid ${!state.override ? 'var(--blue)' : 'var(--border)'};">기본값 (근무지 좌표)</button>
+            <button class="btn" id="useOverrideBtn" style="flex:1; padding:10px; font-size:12.5px; background:${state.override ? 'var(--blue)' : 'var(--bg-card)'}; color:${state.override ? '#fff' : 'var(--text-dim)'}; border:1.5px solid ${state.override ? 'var(--blue)' : 'var(--border)'};">별도 지정</button>
+          </div>
+          ${overridePanel}
+        </div>
+        <div class="card" style="position:relative; overflow:hidden; min-height:420px;">${mapPanel}</div>
+      </div>
+      <div class="card" style="margin-top:16px; overflow:hidden;">
+        <div style="padding:12px 16px; border-bottom:1px solid var(--border); font-size:13px; font-weight:700;">사건별 지정 이력</div>
+        <table>
+          <thead><tr><th>사건명</th><th>지정 구역 (4점)</th><th>면적</th><th>지정일시</th></tr></thead>
+          <tbody>${historyRows}</tbody>
+        </table>
+      </div>
+    </div>`;
+}
+
+function computeAreaM2(points) {
+  if (points.length < 3) return 0;
+  const meanLat = points.reduce((s, p) => s + p.lat, 0) / points.length;
+  const mPerDegLat = 111320;
+  const mPerDegLng = 111320 * Math.cos(meanLat * Math.PI / 180);
+  const xy = points.map((p) => ({ x: (p.lng - points[0].lng) * mPerDegLng, y: (p.lat - points[0].lat) * mPerDegLat }));
+  let area = 0;
+  for (let i = 0; i < xy.length; i++) {
+    const j = (i + 1) % xy.length;
+    area += xy[i].x * xy[j].y - xy[j].x * xy[i].y;
+  }
+  return Math.abs(area) / 2;
+}
+
+function bindGatheringTab() {
+  $('useDefaultBtn').addEventListener('click', async () => {
+    state.override = false;
+    await api('/gathering/mode', { method: 'POST', body: JSON.stringify({ override: false }) });
+    await loadTab('gathering');
+  });
+  $('useOverrideBtn').addEventListener('click', async () => {
+    state.override = true;
+    await api('/gathering/mode', { method: 'POST', body: JSON.stringify({ override: true }) });
+    await loadTab('gathering');
+  });
+  mountGatherMap();
+  const resetBtn = $('resetPointsBtn');
+  if (resetBtn) resetBtn.addEventListener('click', (e) => { e.preventDefault(); state.gatherPoints = []; renderBody(); });
+  const eventInput = $('eventNameInput');
+  if (eventInput) eventInput.addEventListener('input', () => { state.eventName = eventInput.value; });
+  const geoBtn = $('geocodeBtn');
+  if (geoBtn) geoBtn.addEventListener('click', async () => {
+    const q = $('geocodeInput').value.trim();
+    if (!q) return;
+    state.geocodeQuery = q;
+    try {
+      const data = await api('/geocode?q=' + encodeURIComponent(q));
+      state.geocodeResults = data.results || [];
+      renderBody();
+    } catch (e) { alert(e.message); }
+  });
+  document.querySelectorAll('[data-geopick]').forEach((el) => el.addEventListener('click', () => {
+    if (state.gatherPoints.length >= 4) return;
+    const r = state.geocodeResults[Number(el.dataset.geopick)];
+    if (!r) return;
+    state.gatherPoints = [...state.gatherPoints, { lat: r.lat, lng: r.lng }];
+    state.previewAreaM2 = computeAreaM2(state.gatherPoints);
+    state.geocodeResults = [];
+    state.mapCenter = [r.lat, r.lng];
+    state.mapZoom = 16;
+    renderBody();
+  }));
+  const saveBtn = $('saveGatherBtn');
+  if (saveBtn) saveBtn.addEventListener('click', async () => {
+    if (state.gatherPoints.length !== 4) return;
+    const errBox = $('gatherErr');
+    errBox.style.display = 'none';
+    try {
+      await api('/gathering', { method: 'POST', body: JSON.stringify({ eventName: state.eventName, points: state.gatherPoints }) });
+      state.gatherPoints = [];
+      state.eventName = '';
+      await loadTab('gathering');
+    } catch (e) {
+      errBox.textContent = e.message;
+      errBox.style.display = 'block';
+    }
+  });
+}
+
+// ---------- 관리자 계정 관리 ----------
+function renderAccountsTab() {
+  const rows = admins.map((a) => `
+    <tr>
+      <td style="color:var(--text); font-weight:600;">${a.id}</td>
+      <td>${a.name || '-'}</td>
+      <td>${a.dept || '-'}</td>
+      <td>${a.role || '-'}</td>
+      <td>
+        <div style="display:flex; align-items:center; gap:8px;">
+          <div class="toggle" data-toggleadmin="${a.id}" data-active="${a.active ? '1' : '0'}" style="background:${a.active ? 'var(--blue)' : 'var(--border)'};"><div class="toggle-knob" style="left:${a.active ? '18px' : '2px'};"></div></div>
+          <span style="font-size:11.5px; color:${a.active ? 'var(--green)' : 'var(--text-faint)'};">${a.active ? '활성' : '비활성'}</span>
+        </div>
+      </td>
+    </tr>`).join('') || `<tr><td colspan="5" style="text-align:center; color:var(--text-faint);">등록된 관리자가 없습니다.</td></tr>`;
+
+  return `
+    <div class="card" style="overflow:hidden;">
+      <div style="display:flex; align-items:center; justify-content:space-between; padding:14px 16px; border-bottom:1px solid var(--border);">
+        <div>
+          <div style="font-size:14px; font-weight:700;">관리자 계정 관리</div>
+          <div style="font-size:11.5px; color:var(--text-faint); margin-top:2px;">1차 버전은 전 관리자 계정이 동일 권한(AD-1~AD-6)을 가집니다</div>
+        </div>
+        <button class="btn" id="toggleAddAdminBtn" style="padding:9px 14px; font-size:12.5px; background:var(--blue); color:#fff;">+ 관리자 추가</button>
+      </div>
+      <div id="addAdminRow" style="display:${state.addAdminOpen ? 'flex' : 'none'}; gap:8px; padding:12px 16px; background:var(--bg-muted); border-bottom:1px solid var(--border); flex-wrap:wrap;">
+        <input class="field" id="newAdminId" placeholder="아이디" style="width:130px;"/>
+        <input class="field" id="newAdminPw" placeholder="임시 비밀번호" style="width:130px;"/>
+        <input class="field" id="newAdminName" placeholder="성명" style="width:100px;"/>
+        <input class="field" id="newAdminDept" placeholder="소속부서" style="width:140px;"/>
+        <input class="field" id="newAdminRole" placeholder="직책" style="width:130px;"/>
+        <button class="btn" id="issueAdminBtn" style="padding:9px 14px; font-size:12.5px; background:var(--blue); color:#fff;">발급</button>
+        <button class="btn" id="cancelAddAdminBtn" style="padding:9px 14px; font-size:12.5px; background:var(--bg-card); color:var(--text-dim); border:1px solid var(--border);">취소</button>
+        <div id="addAdminErr" style="width:100%; display:none;" class="errbox"></div>
+      </div>
+      <table>
+        <thead><tr><th>아이디</th><th>성명</th><th>소속부서</th><th>직책</th><th>상태</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+}
+
+function bindAccountsTab() {
+  $('toggleAddAdminBtn').addEventListener('click', () => { state.addAdminOpen = !state.addAdminOpen; renderBody(); });
+  const cancelBtn = $('cancelAddAdminBtn');
+  if (cancelBtn) cancelBtn.addEventListener('click', () => { state.addAdminOpen = false; renderBody(); });
+  const issueBtn = $('issueAdminBtn');
+  if (issueBtn) issueBtn.addEventListener('click', async () => {
+    const body = {
+      id: $('newAdminId').value.trim(),
+      password: $('newAdminPw').value,
+      name: $('newAdminName').value.trim(),
+      dept: $('newAdminDept').value.trim(),
+      role: $('newAdminRole').value.trim(),
+    };
+    const errBox = $('addAdminErr');
+    errBox.style.display = 'none';
+    try {
+      await api('/admins', { method: 'POST', body: JSON.stringify(body) });
+      state.addAdminOpen = false;
+      await loadTab('accounts');
+    } catch (e) {
+      errBox.textContent = e.message;
+      errBox.style.display = 'block';
+    }
+  });
+  document.querySelectorAll('[data-toggleadmin]').forEach((el) => el.addEventListener('click', async () => {
+    const id = el.dataset.toggleadmin;
+    const active = el.dataset.active === '1';
+    await api(`/admins/${id}/active`, { method: 'PUT', body: JSON.stringify({ active: !active }) });
+    await loadTab('accounts');
+  }));
+}
+
+// ---------- 기기등록코드 관리 ----------
+function renderDeviceCodeTab() {
+  const code = deviceCode || { code: '----', updatedAt: null };
+  return `
+    <div class="card" style="max-width:640px; padding:24px;">
+      <div style="font-size:14px; font-weight:700; margin-bottom:4px;">기기등록코드 관리</div>
+      <div style="font-size:11.5px; color:var(--text-faint); margin-bottom:20px; line-height:1.6;">대원 앱의 신규 기기 등록에 쓰이는 공용 코드입니다. 분실·유출 의심 시 즉시 재발급하세요. 재발급 시 이전 코드는 즉시 무효화되며, 이미 등록된 기기의 로그인에는 영향이 없습니다.</div>
+      <div style="background:var(--bg-muted); border:1px solid var(--border); border-radius:10px; padding:20px; display:flex; align-items:center; justify-content:space-between;">
+        <div>
+          <div style="font-size:11px; color:var(--text-faint); margin-bottom:6px;">현재 기기등록코드</div>
+          <div style="font-size:22px; font-weight:700; letter-spacing:0.08em; font-family:'Courier New', monospace;">${state.codeVisible ? code.code : '••••-••••'}</div>
+        </div>
+        <button class="btn" id="toggleCodeVisibleBtn" style="padding:9px 12px; background:var(--bg-card); border:1px solid var(--border); color:var(--text-dim);">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7z" stroke="currentColor" stroke-width="1.6"/><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.6"/></svg>
+        </button>
+      </div>
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-top:16px;">
+        <div style="font-size:11.5px; color:var(--text-faint);">마지막 변경: ${fmtDateTime(code.updatedAt)}</div>
+        <button class="btn" id="regenerateBtn" style="padding:10px 16px; font-size:12.5px; background:var(--red); color:#fff; display:flex; align-items:center; gap:6px;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M21 12a9 9 0 1 1-2.6-6.4M21 4v5h-5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          코드 재발급
+        </button>
+      </div>
+      <div style="display:flex; gap:10px; margin-top:20px; padding:12px 14px; background:oklch(0.95 0.03 80); border-radius:8px;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" style="flex-shrink:0; margin-top:1px;"><path d="M12 3l10 18H2L12 3z" stroke="oklch(0.5 0.14 80)" stroke-width="1.6" stroke-linejoin="round"/><path d="M12 10v4M12 16.5v.1" stroke="oklch(0.5 0.14 80)" stroke-width="1.8" stroke-linecap="round"/></svg>
+        <div style="font-size:11.5px; color:oklch(0.4 0.1 80); line-height:1.6;">코드를 아는 사람만 앱에서 신규 기기를 스스로 등록할 수 있습니다. 건별 SMS 인증이나 관리자 개별 승인 절차는 없으므로 코드 노출에 유의하세요.</div>
+      </div>
+    </div>`;
+}
+
+function bindDeviceCodeTab() {
+  $('toggleCodeVisibleBtn').addEventListener('click', () => { state.codeVisible = !state.codeVisible; renderBody(); });
+  $('regenerateBtn').addEventListener('click', async () => {
+    if (!confirm('코드를 재발급하면 이전 코드는 즉시 무효화됩니다. 계속하시겠습니까?')) return;
+    deviceCode = await api('/device-code/regenerate', { method: 'POST' });
+    state.codeVisible = true;
+    renderBody();
+  });
+}
+
+// ---------- 공통 렌더/로드 ----------
+function renderBody() {
+  if (state.tab !== 'gathering') destroyGatherMap();
+  let html = '';
+  if (state.tab === 'personnel') html = renderPersonnelTab();
+  else if (state.tab === 'teams') html = renderTeamsTab();
+  else if (state.tab === 'settings') html = renderSettingsTab();
+  else if (state.tab === 'gathering') html = renderGatheringTab();
+  else if (state.tab === 'accounts') html = renderAccountsTab();
+  else if (state.tab === 'devicecode') html = renderDeviceCodeTab();
+  $('tabBody').innerHTML = html;
+  bindTabEvents();
+}
+
+function bindTabEvents() {
+  if (state.tab === 'personnel') bindPersonnelTab();
+  else if (state.tab === 'teams') bindTeamsTab();
+  else if (state.tab === 'settings') bindSettingsTab();
+  else if (state.tab === 'gathering') bindGatheringTab();
+  else if (state.tab === 'accounts') bindAccountsTab();
+  else if (state.tab === 'devicecode') bindDeviceCodeTab();
+}
+
+async function loadTab(tab) {
+  if (tab === 'personnel') {
+    const data = await api('/personnel');
+    personnel = data.personnel;
+  } else if (tab === 'teams') {
+    const data = await api('/personnel');
+    personnel = data.personnel;
+  } else if (tab === 'settings') {
+    const data = await api('/settings');
+    originButtons = data.originButtons;
+    stagesByOrigin = data.stagesByOrigin;
+  } else if (tab === 'gathering') {
+    const data = await api('/gathering');
+    gatheringConfig = data.config;
+    gatheringHistory = data.history;
+    state.override = gatheringConfig.overrideActive;
+  } else if (tab === 'accounts') {
+    const data = await api('/admins');
+    admins = data.admins;
+  } else if (tab === 'devicecode') {
+    deviceCode = await api('/device-code');
+  }
+  renderBody();
+}
+
+$('logoutBtn').addEventListener('click', async () => {
+  await fetch('/api/auth/logout', { method: 'POST' });
+  window.location.href = '/login.html?mode=admin';
+});
+
+async function init() {
+  const meRes = await fetch('/api/auth/me');
+  const me = await meRes.json();
+  if (!me.authenticated || me.role !== 'admin') { window.location.href = '/login.html?mode=admin'; return; }
+  $('whoami').textContent = `관리자${me.adminName ? ' · ' + me.adminName : ''}${me.adminDept ? ' (' + me.adminDept + ')' : ''}`;
+  renderTabs();
+  await loadTab(state.tab);
+}
+init();
+</script>
+</body>
+</html>

@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>초기화면 - 인력동원상황실</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&display=swap">
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    --bg: oklch(0.17 0.02 250);
+    --bg-panel: oklch(0.225 0.026 250);
+    --border: oklch(0.34 0.03 250);
+    --text: oklch(0.96 0.01 250);
+    --text-dim: oklch(0.7 0.02 250);
+    --text-faint: oklch(0.5 0.02 250);
+    --blue: oklch(0.68 0.15 240);
+    background: var(--bg); color: var(--text);
+    font-family: 'Noto Sans KR', 'Malgun Gothic', 'Apple SD Gothic Neo', system-ui, sans-serif;
+    display: flex; flex-direction: column; min-height: 100vh;
+  }
+  a { color: var(--blue); text-decoration: none; }
+  .choice-card {
+    width: 300px; height: 220px; border-radius: 14px; cursor: pointer;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px;
+    transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+    background: var(--bg-panel); border: 1.5px solid var(--border);
+  }
+  .choice-card:hover { transform: translateY(-3px); }
+  .choice-card.active { background: oklch(0.27 0.06 240); border-color: var(--blue); }
+  .next-btn { border: none; border-radius: 8px; padding: 15px 40px; font-size: 15px; font-weight: 700; font-family: inherit; cursor: pointer; }
+  .logout-btn { background: none; border: none; color: var(--text-faint); font-size: 12px; cursor: pointer; font-family: inherit; }
+</style>
+</head>
+<body>
+  <div style="display:flex; align-items:center; justify-content:space-between; padding:20px 40px; border-bottom:1px solid var(--border);">
+    <div style="display:flex; align-items:center; gap:10px;">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M12 2 L21 6 V12 C21 17 17 20.5 12 22 C7 20.5 3 17 3 12 V6 Z" stroke="var(--blue)" stroke-width="1.6" stroke-linejoin="round"/></svg>
+      <div style="font-size:14px; font-weight:700; letter-spacing:0.02em;">인력동원상황실</div>
+    </div>
+    <div style="display:flex; align-items:center; gap:14px;">
+      <span id="whoami" style="font-size:12px; color:var(--text-faint); border:1px solid var(--border); border-radius:6px; padding:5px 10px;">-</span>
+      <button class="logout-btn" id="logoutBtn">로그아웃</button>
+    </div>
+  </div>
+
+  <div style="flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:56px;">
+    <div style="text-align:center;">
+      <div style="font-size:40px; font-weight:900;">비상동원상황실</div>
+      <div style="font-size:15px; color:var(--text-dim); margin-top:10px;">동원명령을 발령할 상황 유형을 선택하세요</div>
+    </div>
+
+    <div id="options" style="display:flex; gap:36px;"></div>
+
+    <button class="next-btn" id="nextBtn" disabled>상황단계 선택으로 이동</button>
+  </div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let originButtons = [];
+let selected = null;
+
+const ICONS = {
+  city: '<svg width="52" height="52" viewBox="0 0 24 24" fill="none"><path d="M4 21V8l8-5 8 5v13" stroke="__C__" stroke-width="1.5" stroke-linejoin="round"/><path d="M9 21v-6h6v6" stroke="__C__" stroke-width="1.5"/><path d="M9 12h.01M15 12h.01M9 9h.01M15 9h.01" stroke="__C__" stroke-width="2" stroke-linecap="round"/></svg>',
+  fire: '<svg width="52" height="52" viewBox="0 0 24 24" fill="none"><path d="M12 2c1 3-3 4-3 8a3 3 0 0 0 6 0c1.2 1 2 2.6 2 4.3A5.3 5.3 0 0 1 12 20a5.3 5.3 0 0 1-5-6.7C7.5 9 9.5 8 8.5 5c1.2.4 2 1.3 2 2.4C11 6 10.6 3.5 12 2z" stroke="__C__" stroke-width="1.5" stroke-linejoin="round"/></svg>',
+};
+const SUB = { city: '풍수해 등 재난 대응', fire: '화재·구조 등 소방 대응' };
+
+function render() {
+  $('options').innerHTML = originButtons.map((b) => {
+    const active = selected === b.id;
+    const color = active ? 'oklch(0.8 0.1 240)' : 'oklch(0.65 0.03 250)';
+    const icon = (ICONS[b.id] || ICONS.city).replaceAll('__C__', color);
+    return `<div class="choice-card ${active ? 'active' : ''}" data-id="${b.id}">
+      ${icon}
+      <div style="font-size:20px; font-weight:700; color:${active ? '#fff' : 'var(--text)'};">${b.label}</div>
+      <div style="font-size:12px; color:var(--text-faint);">${SUB[b.id] || ''}</div>
+    </div>`;
+  }).join('');
+  $('options').querySelectorAll('[data-id]').forEach((el) => {
+    el.addEventListener('click', () => { selected = el.dataset.id; render(); });
+  });
+  $('nextBtn').disabled = !selected;
+  $('nextBtn').style.background = selected ? 'var(--blue)' : 'oklch(0.24 0.02 250)';
+  $('nextBtn').style.color = selected ? 'oklch(0.14 0.02 250)' : 'var(--text-faint)';
+  $('nextBtn').style.opacity = selected ? '1' : '0.6';
+  $('nextBtn').style.cursor = selected ? 'pointer' : 'default';
+}
+
+$('nextBtn').addEventListener('click', () => {
+  if (!selected) return;
+  window.location.href = '/stage-select.html?origin=' + encodeURIComponent(selected);
+});
+
+$('logoutBtn').addEventListener('click', async () => {
+  await fetch('/api/auth/logout', { method: 'POST' });
+  window.location.href = '/login.html';
+});
+
+async function init() {
+  const meRes = await fetch('/api/auth/me');
+  const me = await meRes.json();
+  if (!me.authenticated) { window.location.href = '/login.html'; return; }
+  $('whoami').textContent = me.role === 'admin' ? `관리자${me.adminName ? ' · ' + me.adminName : ''}` : '상황실근무자';
+
+  const res = await fetch('/api/control/settings');
+  if (res.status === 401) { window.location.href = '/login.html'; return; }
+  const data = await res.json();
+  originButtons = data.originButtons;
+  render();
+}
+init();
+</script>
+</body>
+</html>

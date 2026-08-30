@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>로그인 - 인력동원상황실</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&display=swap">
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    --bg: oklch(0.17 0.02 250);
+    --bg-panel: oklch(0.225 0.026 250);
+    --bg-panel-2: oklch(0.28 0.03 250);
+    --border: oklch(0.34 0.03 250);
+    --text: oklch(0.96 0.01 250);
+    --text-dim: oklch(0.7 0.02 250);
+    --text-faint: oklch(0.5 0.02 250);
+    --blue: oklch(0.68 0.15 240);
+    --red: oklch(0.62 0.19 25);
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Noto Sans KR', 'Malgun Gothic', 'Apple SD Gothic Neo', system-ui, sans-serif;
+    display: flex;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+  a { color: var(--blue); text-decoration: none; }
+  a:hover { color: oklch(0.78 0.13 240); }
+  input.field {
+    background: oklch(0.2 0.02 250); border: 1px solid var(--border); color: var(--text);
+    border-radius: 8px; padding: 13px 14px; font-size: 15px; font-family: inherit; outline: none; width: 100%;
+  }
+  input.field::placeholder { color: var(--text-faint); }
+  input.field:focus { border-color: var(--blue); }
+  .btn-primary {
+    background: var(--blue); color: oklch(0.14 0.02 250); border: none; border-radius: 8px;
+    padding: 14px; font-size: 15px; font-weight: 700; cursor: pointer; font-family: inherit; width: 100%;
+  }
+  .btn-primary:hover { background: oklch(0.74 0.14 240); }
+  .btn-primary:disabled { opacity: .6; cursor: default; }
+  .link-btn { background: none; border: none; color: var(--text-dim); font-size: 13px; cursor: pointer; font-family: inherit; padding: 4px; }
+  .link-btn:hover { color: var(--text); }
+  .error-box { display:none; margin-top:14px; background: oklch(0.3 0.1 25); color: oklch(0.9 0.08 25); border-radius:8px; padding:10px 12px; font-size:12.5px; }
+  .error-box.show { display: block; }
+  .radar { position:absolute; left:-260px; top:-180px; opacity:.5; pointer-events:none; }
+  @media (max-width: 860px) {
+    .brand-pane { display: none !important; }
+    .login-pane { width: 100% !important; padding: 24px !important; }
+  }
+</style>
+</head>
+<body>
+  <svg class="radar" width="900" height="900" viewBox="0 0 900 900">
+    <circle cx="450" cy="450" r="120" fill="none" stroke="oklch(0.4 0.05 250)" stroke-width="1"/>
+    <circle cx="450" cy="450" r="220" fill="none" stroke="oklch(0.36 0.05 250)" stroke-width="1"/>
+    <circle cx="450" cy="450" r="320" fill="none" stroke="oklch(0.32 0.04 250)" stroke-width="1"/>
+    <circle cx="450" cy="450" r="420" fill="none" stroke="oklch(0.28 0.04 250)" stroke-width="1"/>
+    <line x1="450" y1="30" x2="450" y2="870" stroke="oklch(0.3 0.04 250)" stroke-width="1"/>
+    <line x1="30" y1="450" x2="870" y2="450" stroke="oklch(0.3 0.04 250)" stroke-width="1"/>
+  </svg>
+
+  <div class="brand-pane" style="position:relative; flex:1; display:flex; flex-direction:column; justify-content:center; padding:0 40px 0 88px; gap:28px;">
+    <div style="display:flex; align-items:center; gap:14px;">
+      <svg width="44" height="44" viewBox="0 0 24 24" fill="none">
+        <path d="M12 2 L21 6 V12 C21 17 17 20.5 12 22 C7 20.5 3 17 3 12 V6 Z" stroke="var(--blue)" stroke-width="1.6" stroke-linejoin="round"/>
+        <path d="M12 7 V13 M12 16.2 V16.4" stroke="var(--blue)" stroke-width="1.8" stroke-linecap="round"/>
+      </svg>
+      <div style="font-size:14px; letter-spacing:0.14em; color:var(--text-dim); font-weight:500;">DAEGU METROPOLITAN CITY</div>
+    </div>
+    <div>
+      <div style="font-size:44px; font-weight:900; line-height:1.25;">비상동원상황실</div>
+      <div style="font-size:16px; color:var(--text-dim); margin-top:10px; line-height:1.6;">비상상황 발생 시 상황실–현장 대상자 간 임무부여,<br/>응소확인, 위치확인을 실시간으로 관리합니다.</div>
+    </div>
+    <div style="display:flex; gap:10px; margin-top:8px;">
+      <span style="font-size:12px; color:var(--text-faint); border:1px solid var(--border); border-radius:6px; padding:6px 10px;">상황실근무자</span>
+      <span style="font-size:12px; color:var(--text-faint); border:1px solid var(--border); border-radius:6px; padding:6px 10px;">관리자</span>
+      <span style="font-size:12px; color:var(--text-faint); border:1px solid var(--border); border-radius:6px; padding:6px 10px;">현장 대상자(웹·앱)</span>
+    </div>
+  </div>
+
+  <div class="login-pane" style="position:relative; width:460px; display:flex; align-items:center; justify-content:center; padding-right:64px;">
+    <div style="width:380px; background:var(--bg-panel); border:1px solid var(--border); border-radius:14px; padding:36px 32px; box-shadow:0 24px 60px -20px oklch(0.05 0.02 250 / 0.6);">
+
+      <div id="situationPane">
+        <div style="font-size:12px; font-weight:700; letter-spacing:0.08em; color:var(--blue); margin-bottom:6px;">상황실 접속</div>
+        <div style="font-size:20px; font-weight:700; margin-bottom:22px;">상황판 로그인</div>
+        <form id="controlForm" style="display:flex; flex-direction:column; gap:14px;">
+          <div>
+            <div style="font-size:12px; color:var(--text-dim); margin-bottom:6px;">공용 암호</div>
+            <input class="field" id="passcode" type="password" placeholder="상황실 공용 암호 입력" autocomplete="current-password" required />
+          </div>
+          <button class="btn-primary" type="submit" id="controlSubmit" style="margin-top:6px;">상황판 접속</button>
+          <div class="error-box" id="controlError"></div>
+        </form>
+        <div style="display:flex; align-items:center; gap:12px; margin:24px 0;">
+          <div style="flex:1; height:1px; background:var(--border);"></div>
+          <div style="font-size:12px; color:var(--text-faint);">또는</div>
+          <div style="flex:1; height:1px; background:var(--border);"></div>
+        </div>
+        <button class="link-btn" id="goAdmin" style="width:100%; border:1px solid var(--border); border-radius:8px; padding:12px; display:flex; align-items:center; justify-content:center; gap:6px;">
+          관리자용 로그인
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+      </div>
+
+      <div id="adminPane" style="display:none;">
+        <button class="link-btn" id="goSituation" style="padding:0; margin-bottom:18px; display:flex; align-items:center; gap:4px;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M15 6l-6 6 6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          상황실 접속으로
+        </button>
+        <div style="font-size:12px; font-weight:700; letter-spacing:0.08em; color:var(--blue); margin-bottom:6px;">관리자 접속</div>
+        <div style="font-size:20px; font-weight:700; margin-bottom:22px;">관리자 로그인</div>
+        <form id="adminForm" style="display:flex; flex-direction:column; gap:14px;">
+          <div>
+            <div style="font-size:12px; color:var(--text-dim); margin-bottom:6px;">아이디</div>
+            <input class="field" id="adminId" type="text" placeholder="관리자 아이디" autocomplete="username" required />
+          </div>
+          <div>
+            <div style="font-size:12px; color:var(--text-dim); margin-bottom:6px;">비밀번호</div>
+            <div style="position:relative;">
+              <input class="field" id="adminPassword" type="password" placeholder="비밀번호" autocomplete="current-password" style="padding-right:44px;" required />
+              <button type="button" id="togglePw" style="position:absolute; right:10px; top:50%; transform:translateY(-50%); background:none; border:none; cursor:pointer; color:var(--text-faint); padding:4px;">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7z" stroke="currentColor" stroke-width="1.6"/><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.6"/></svg>
+              </button>
+            </div>
+          </div>
+          <button class="btn-primary" type="submit" id="adminSubmit" style="margin-top:6px;">관리자 로그인</button>
+          <div class="error-box" id="adminError"></div>
+        </form>
+        <div style="font-size:12px; color:var(--text-faint); margin-top:18px; line-height:1.6;">개별 아이디로 발급되며 소속부서·직책이 계정에 기록됩니다. 1차 버전은 전 관리자 동일 권한(AD-1~AD-6)이 적용됩니다.</div>
+      </div>
+
+    </div>
+  </div>
+
+<script>
+const situationPane = document.getElementById('situationPane');
+const adminPane = document.getElementById('adminPane');
+
+function showAdmin() { situationPane.style.display = 'none'; adminPane.style.display = 'block'; }
+function showSituation() { adminPane.style.display = 'none'; situationPane.style.display = 'block'; }
+
+document.getElementById('goAdmin').addEventListener('click', showAdmin);
+document.getElementById('goSituation').addEventListener('click', showSituation);
+
+if (new URLSearchParams(location.search).get('mode') === 'admin') showAdmin();
+
+document.getElementById('togglePw').addEventListener('click', () => {
+  const input = document.getElementById('adminPassword');
+  input.type = input.type === 'password' ? 'text' : 'password';
+});
+
+document.getElementById('controlForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const errorBox = document.getElementById('controlError');
+  const btn = document.getElementById('controlSubmit');
+  errorBox.classList.remove('show');
+  btn.disabled = true;
+  btn.textContent = '접속 중...';
+  try {
+    const res = await fetch('/api/auth/control-login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ passcode: document.getElementById('passcode').value }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || '접속에 실패했습니다.');
+    window.location.href = '/home.html';
+  } catch (err) {
+    errorBox.textContent = err.message;
+    errorBox.classList.add('show');
+    btn.disabled = false;
+    btn.textContent = '상황판 접속';
+  }
+});
+
+document.getElementById('adminForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const errorBox = document.getElementById('adminError');
+  const btn = document.getElementById('adminSubmit');
+  errorBox.classList.remove('show');
+  btn.disabled = true;
+  btn.textContent = '접속 중...';
+  try {
+    const res = await fetch('/api/auth/admin-login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: document.getElementById('adminId').value,
+        password: document.getElementById('adminPassword').value,
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || '접속에 실패했습니다.');
+    window.location.href = '/home.html';
+  } catch (err) {
+    errorBox.textContent = err.message;
+    errorBox.classList.add('show');
+    btn.disabled = false;
+    btn.textContent = '관리자 로그인';
+  }
+});
+</script>
+</body>
+</html>

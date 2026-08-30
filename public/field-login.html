@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+<title>현장 접속 - 인력동원상황실</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&display=swap">
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    --bg: oklch(0.97 0.004 250);
+    --bg-card: oklch(1 0 0);
+    --bg-muted: oklch(0.955 0.006 250);
+    --border: oklch(0.885 0.008 250);
+    --text: oklch(0.22 0.02 250);
+    --text-dim: oklch(0.48 0.015 250);
+    --text-faint: oklch(0.62 0.012 250);
+    --blue: oklch(0.56 0.16 240);
+    --red: oklch(0.56 0.19 25);
+    background: var(--bg); color: var(--text);
+    font-family: 'Noto Sans KR', 'Malgun Gothic', 'Apple SD Gothic Neo', system-ui, sans-serif;
+    display: flex; align-items: center; justify-content: center; min-height: 100vh;
+  }
+  .field { background: var(--bg-muted); border: 1px solid var(--border); color: var(--text); border-radius: 10px; padding: 13px 14px; font-size: 14px; font-family: inherit; outline: none; width: 100%; }
+  .field:focus { border-color: var(--blue); background: var(--bg-card); }
+  .btn { font-family: inherit; cursor: pointer; border: none; border-radius: 11px; font-weight: 700; }
+  .error-box { display:none; margin-top:14px; background: oklch(0.92 0.08 25); color: oklch(0.42 0.14 25); border-radius:8px; padding:10px 12px; font-size:12.5px; }
+  .error-box.show { display: block; }
+  a { color: var(--blue); text-decoration: none; }
+</style>
+</head>
+<body>
+<div style="width:360px; background:var(--bg-card); border:1px solid var(--border); border-radius:14px; padding:32px 28px; box-shadow:0 20px 50px -20px rgba(0,0,0,.15);">
+  <div style="display:flex; flex-direction:column; align-items:center; gap:12px; margin-bottom:26px;">
+    <div style="width:56px; height:56px; border-radius:16px; background:var(--blue); display:flex; align-items:center; justify-content:center;">
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="none"><path d="M12 2 L21 6 V12 C21 17 17 20.5 12 22 C7 20.5 3 17 3 12 V6 Z" stroke="#fff" stroke-width="1.6" stroke-linejoin="round"/></svg>
+    </div>
+    <div style="text-align:center;">
+      <div style="font-size:17px; font-weight:800;">현장 접속</div>
+      <div style="font-size:12px; color:var(--text-faint); margin-top:2px;">인력동원상황실 · 이름과 연락처로 본인을 확인합니다</div>
+    </div>
+  </div>
+  <form id="loginForm" style="display:flex; flex-direction:column; gap:12px;">
+    <input class="field" id="name" type="text" placeholder="이름" autocomplete="name" required />
+    <input class="field" id="phone" type="tel" placeholder="연락처 (예: 010-1234-5678)" autocomplete="tel" required />
+    <button class="btn" type="submit" id="submitBtn" style="width:100%; padding:14px; background:var(--blue); color:#fff; font-size:14.5px; margin-top:4px;">확인</button>
+    <div class="error-box" id="errorBox"></div>
+  </form>
+  <div style="text-align:center; margin-top:18px; font-size:12.5px; color:var(--text-faint);">상황실근무자·관리자이신가요? <a href="/login.html">상황판 접속으로</a></div>
+</div>
+<script>
+const form = document.getElementById('loginForm');
+const errorBox = document.getElementById('errorBox');
+const submitBtn = document.getElementById('submitBtn');
+
+form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  errorBox.classList.remove('show');
+  submitBtn.disabled = true;
+  submitBtn.textContent = '확인 중...';
+  try {
+    const res = await fetch('/api/auth/field-login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: document.getElementById('name').value.trim(),
+        phone: document.getElementById('phone').value.trim(),
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || '접속에 실패했습니다.');
+    window.location.href = '/field.html';
+  } catch (err) {
+    errorBox.textContent = err.message;
+    errorBox.classList.add('show');
+    submitBtn.disabled = false;
+    submitBtn.textContent = '확인';
+  }
+});
+</script>
+</body>
+</html>
