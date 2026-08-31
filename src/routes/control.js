@@ -72,6 +72,12 @@ router.get('/dashboard', (req, res) => {
   const active = dispatched ? repo.activePersonnel() : [];
   const gathering = repo.getActiveGatheringArea();
   const center = repo.getGatheringCenter();
+  // 집결지 1/2가 모두 활성화된 경우 지도에 두 구역을 함께 그리기 위한 목록(둘 중 하나라도 도착하면 응소 인정)
+  const gatheringCenters = repo.getGatheringCenters();
+  const gatheringAreas = repo.getActiveGatheringAreas().map((a) => {
+    const c = gatheringCenters.find((x) => x.slot === a.slot);
+    return { slot: a.slot, eventName: a.eventName, points: a.points, center: c ? c.center : null };
+  });
 
   // 지도 마커 위치(%) 계산 — 집결지 중심을 기준으로 각 인원의 현재 위치(또는 미수집 시 임의 분산)를 정규화
   const spanDeg = 0.01; // 집결지 중심 기준 표시 반경(위경도 도) — 지도 패널의 여백 범위
@@ -109,6 +115,7 @@ router.get('/dashboard', (req, res) => {
   const csvRows = repo.responseLog().map((r, i) => ({
     no: i + 1,
     recv: fmtHM(r.recv),
+    ack: fmtHM(r.ack),
     arr: fmtHM(r.arr),
     team: r.team,
     dept: r.dept,
@@ -126,6 +133,7 @@ router.get('/dashboard', (req, res) => {
     gatheringEventName: gathering ? gathering.eventName : null,
     gatheringCenter: center,
     gatheringPoints: gathering ? gathering.points : null,
+    gatheringAreas,
     active: active.map((p) => ({
       id: p.id,
       name: p.name,
@@ -135,6 +143,7 @@ router.get('/dashboard', (req, res) => {
       status: p.status,
       missionUpdatedAt: p.mission_updated_at,
       arrivedAt: p.arrived_at,
+      ackAt: p.ack_at,
     })),
     markers,
     summary: statusCounts(active),
@@ -193,7 +202,7 @@ router.post('/dashboard/notify', (req, res) => {
 router.get('/dashboard/csv', (req, res) => {
   const rows = repo.responseLog();
   const text = csvLib.responseLogToCsv(
-    rows.map((r) => ({ ...r, recv: fmtHM(r.recv), arr: fmtHM(r.arr) }))
+    rows.map((r) => ({ ...r, recv: fmtHM(r.recv), ack: fmtHM(r.ack), arr: fmtHM(r.arr) }))
   );
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
   res.setHeader('Content-Disposition', 'attachment; filename="jadong_eungso_gilog.csv"');

@@ -68,14 +68,15 @@ function parsePersonnelCsv(text) {
   return rows;
 }
 
-const RESPONSE_LOG_HEADERS = ['연번', '소집수령', '응소시간', '조', '부서명', '계급', '성명', '응소반경(m)'];
+const RESPONSE_LOG_HEADERS = ['연번', '소집수령', '응소확인시간', '응소시간', '조', '부서명', '계급', '성명', '응소반경(m)'];
 
-/** Dashboard 중앙 패널 "자동응소 기록 CSV" — 응소(도착) 인원의 소집수령/응소시간 기록 */
+/** Dashboard 중앙 패널 "자동응소 기록 CSV" — 소집수령/응소확인(버튼)/응소(도착, GPS) 시간 기록.
+ *  응소확인만 하고 아직 도착 전인 사람도 포함되며, 이 경우 응소시간 칸은 비어 있다(fmtHM이 '-' 처리). */
 function responseLogToCsv(rows) {
   const lines = [RESPONSE_LOG_HEADERS.join(',')];
   rows.forEach((r, i) => {
     lines.push(
-      [i + 1, r.recv, r.arr, r.team, r.dept, r.rank, r.name, r.radius].map(escapeCell).join(',')
+      [i + 1, r.recv, r.ack, r.arr, r.team, r.dept, r.rank, r.name, r.radius].map(escapeCell).join(',')
     );
   });
   return '﻿' + lines.join('\r\n') + '\r\n';

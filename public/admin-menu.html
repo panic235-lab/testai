@@ -89,10 +89,12 @@ const state = {
   uploadOpen: false,
   uploadFile: null,
   uploadResult: null,
-  override: false,
-  gatherPoints: [],
-  previewAreaM2: 0,
-  eventName: '',
+  // 집결지 1 / 집결지 2 편집용 슬롯 상태 — gatheringConfigs(서버 저장값) 로드 시 여기로 프리필된다
+  gatherSlot: 1,
+  slots: {
+    1: { override: false, gatherPoints: [], previewAreaM2: 0, eventName: '' },
+    2: { override: false, gatherPoints: [], previewAreaM2: 0, eventName: '' },
+  },
   codeVisible: false,
   geocodeResults: [],
   geocodeQuery: '',
@@ -102,7 +104,7 @@ let personnel = [];
 let originButtons = [];
 let stagesByOrigin = {};
 let admins = [];
-let gatheringConfig = null;
+let gatheringConfigs = [];
 let gatheringHistory = [];
 let deviceCode = null;
 
@@ -436,13 +438,14 @@ function gatherNumberIcon(n) {
 
 function drawGatherOverlay() {
   if (!gatherMapInstance) return;
+  const s = state.slots[state.gatherSlot];
   gatherMarkersLayer.clearLayers();
   gatherPolyLayer.clearLayers();
-  state.gatherPoints.forEach((p, i) => {
+  s.gatherPoints.forEach((p, i) => {
     L.marker([p.lat, p.lng], { icon: gatherNumberIcon(i + 1) }).addTo(gatherMarkersLayer);
   });
-  if (state.gatherPoints.length >= 2) {
-    L.polygon(state.gatherPoints.map((p) => [p.lat, p.lng]), {
+  if (s.gatherPoints.length >= 2) {
+    L.polygon(s.gatherPoints.map((p) => [p.lat, p.lng]), {
       color: GATHER_BLUE, weight: 2, dashArray: '4 3', fillOpacity: 0.15,
     }).addTo(gatherPolyLayer);
   }
@@ -452,6 +455,7 @@ function mountGatherMap() {
   const el = document.getElementById('gatherMap');
   if (!el || typeof L === 'undefined') return;
   destroyGatherMap();
+  const s = state.slots[state.gatherSlot];
   gatherMapInstance = L.map(el).setView(state.mapCenter || GATHER_DEFAULT_CENTER, state.mapZoom || 14);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 19,
@@ -464,11 +468,12 @@ function mountGatherMap() {
     state.mapCenter = [c.lat, c.lng];
     state.mapZoom = gatherMapInstance.getZoom();
   });
-  if (state.override) {
+  if (s.override) {
     gatherMapInstance.on('click', (e) => {
-      if (state.gatherPoints.length >= 4) return;
-      state.gatherPoints = [...state.gatherPoints, { lat: e.latlng.lat, lng: e.latlng.lng }];
-      state.previewAreaM2 = computeAreaM2(state.gatherPoints);
+      const cur = state.slots[state.gatherSlot];
+      if (cur.gatherPoints.length >= 4) return;
+      cur.gatherPoints = [...cur.gatherPoints, { lat: e.latlng.lat, lng: e.latlng.lng }];
+      cur.previewAreaM2 = computeAreaM2(cur.gatherPoints);
       renderBody();
     });
   }
@@ -477,8 +482,24 @@ function mountGatherMap() {
 }
 
 function renderGatheringTab() {
-  const points = state.gatherPoints;
+  // 집결지 1이 서버에 저장되어 있어야만 집결지 2 탭을 열 수 있다(사용자 확정 요구사항).
+  const slot1Config = gatheringConfigs.find((c) => c.slot === 1);
+  const slot2Unlocked = Boolean(slot1Config && slot1Config.points && slot1Config.points.length > 0);
+  if (state.gatherSlot === 2 && !slot2Unlocked) state.gatherSlot = 1;
+
+  const slot = state.gatherSlot;
+  const s = state.slots[slot];
+  const points = s.gatherPoints;
   const hasFour = points.length === 4;
+
+  const slotTabsHtml = `
+    <div style="display:flex; gap:6px; margin-bottom:14px;">
+      <button class="btn" data-slot-tab="1" style="flex:1; padding:9px; font-size:12.5px; background:${slot === 1 ? 'var(--text)' : 'var(--bg-card)'}; color:${slot === 1 ? '#fff' : 'var(--text-dim)'}; border:1.5px solid ${slot === 1 ? 'var(--text)' : 'var(--border)'};">집결지 1</button>
+      <button class="btn" data-slot-tab="2" ${slot2Unlocked ? '' : 'disabled title="집결지 1을 먼저 저장해야 추가할 수 있습니다"'} style="flex:1; padding:9px; font-size:12.5px; background:${slot === 2 ? 'var(--text)' : 'var(--bg-card)'}; color:${slot === 2 ? '#fff' : (slot2Unlocked ? 'var(--text-dim)' : 'var(--text-faint)')}; border:1.5px solid ${slot === 2 ? 'var(--text)' : 'var(--border)'}; ${slot2Unlocked ? '' : 'opacity:.55; cursor:not-allowed;'}">집결지 2 ${slot2Unlocked ? '' : '🔒'}</button>
+    </div>
+    ${!slot2Unlocked ? `<div style="font-size:11px; color:var(--text-faint); margin:-8px 0 14px; line-height:1.5;">집결지 1을 먼저 저장하면 집결지 2를 추가로 지정할 수 있습니다. 두 곳을 모두 활성화하면 대원의 GPS가 둘 중 한 곳에만 도착해도 응소로 인정됩니다.</div>` : ''}
+  `;
+
   const slotsHtml = [0, 1, 2, 3].map((i) => {
     const p = points[i];
     return `<div style="display:flex; align-items:center; gap:8px; padding:8px 10px; background:${p ? 'var(--bg-card)' : 'var(--bg-muted)'}; border-radius:7px; border:1px solid ${p ? 'var(--blue)' : 'var(--border)'};">
@@ -491,11 +512,11 @@ function renderGatheringTab() {
     ${state.geocodeResults.map((r, i) => `<div data-geopick="${i}" style="font-size:11.5px; padding:7px 9px; background:var(--bg-muted); border-radius:6px; cursor:pointer; color:var(--text-dim);">${r.displayName}</div>`).join('')}
   </div>` : '';
 
-  const overridePanel = state.override ? `
+  const overridePanel = s.override ? `
     <div style="display:flex; flex-direction:column; gap:10px;">
       <div>
         <div style="font-size:11.5px; color:var(--text-dim); margin-bottom:4px;">사건명</div>
-        <input class="field" id="eventNameInput" style="width:100%;" placeholder="예: 신천동 하천 범람 대응" value="${state.eventName || ''}"/>
+        <input class="field" id="eventNameInput" style="width:100%;" placeholder="예: 신천동 하천 범람 대응" value="${s.eventName || ''}"/>
       </div>
       <div>
         <div style="font-size:11.5px; color:var(--text-dim); margin-bottom:4px;">주소 검색</div>
@@ -510,33 +531,35 @@ function renderGatheringTab() {
         <a href="#" id="resetPointsBtn" style="font-size:11.5px; color:var(--red); flex-shrink:0;">초기화</a>
       </div>
       <div style="display:flex; flex-direction:column; gap:6px;">${slotsHtml}</div>
-      ${hasFour ? `<div style="font-size:11.5px; color:var(--text-dim); background:var(--bg-muted); border-radius:7px; padding:8px 10px;">지정 면적 약 <strong style="color:var(--text);">${areaLabel(state.previewAreaM2 || 0)}</strong> (지도 클릭 좌표 기준 추정치)</div>` : ''}
+      ${hasFour ? `<div style="font-size:11.5px; color:var(--text-dim); background:var(--bg-muted); border-radius:7px; padding:8px 10px;">지정 면적 약 <strong style="color:var(--text);">${areaLabel(s.previewAreaM2 || 0)}</strong> (지도 클릭 좌표 기준 추정치)</div>` : ''}
       <button class="btn" id="saveGatherBtn" style="padding:11px; font-size:13px; background:${hasFour ? 'var(--blue)' : 'var(--border)'}; color:${hasFour ? '#fff' : 'var(--text-faint)'}; margin-top:4px;" ${hasFour ? '' : 'disabled'}>저장</button>
       <div id="gatherErr" style="display:none;" class="errbox"></div>
     </div>` : '';
 
   const mapPanel = `
-    <div id="gatherMap" style="position:absolute; inset:0; ${state.override ? 'cursor:crosshair;' : ''}"></div>
-    ${state.override && points.length === 0 ? `<div style="position:absolute; left:50%; top:14px; transform:translateX(-50%); z-index:1000; font-size:12px; color:var(--text-faint); background:var(--bg-card); border:1px solid var(--border); border-radius:7px; padding:8px 12px; pointer-events:none; white-space:nowrap;">지도를 클릭해 1번 지점부터 지정하세요</div>` : ''}
-    ${!state.override ? `<div style="position:absolute; left:50%; top:14px; transform:translateX(-50%); z-index:1000; font-size:11.5px; color:var(--text-faint); background:var(--bg-card); border:1px solid var(--border); border-radius:7px; padding:6px 10px; pointer-events:none; white-space:nowrap;">대상자 개인별 근무지 좌표 사용 중 (참고용 지도)</div>` : ''}`;
+    <div id="gatherMap" style="position:absolute; inset:0; ${s.override ? 'cursor:crosshair;' : ''}"></div>
+    ${s.override && points.length === 0 ? `<div style="position:absolute; left:50%; top:14px; transform:translateX(-50%); z-index:1000; font-size:12px; color:var(--text-faint); background:var(--bg-card); border:1px solid var(--border); border-radius:7px; padding:8px 12px; pointer-events:none; white-space:nowrap;">지도를 클릭해 1번 지점부터 지정하세요</div>` : ''}
+    ${!s.override ? `<div style="position:absolute; left:50%; top:14px; transform:translateX(-50%); z-index:1000; font-size:11.5px; color:var(--text-faint); background:var(--bg-card); border:1px solid var(--border); border-radius:7px; padding:6px 10px; pointer-events:none; white-space:nowrap;">${slot === 1 ? '대상자 개인별 근무지 좌표 사용 중 (참고용 지도)' : '집결지 2 비활성 상태 (참고용 지도)'}</div>` : ''}`;
 
   const historyRows = gatheringHistory.map((h) => `
     <tr>
+      <td>집결지${h.slot || 1}</td>
       <td style="color:var(--text); font-weight:600;">${h.eventName || '(이름 없음)'}</td>
       <td>${h.points && h.points[0] ? h.points[0].lat.toFixed(4) + ', ' + h.points[0].lng.toFixed(4) + ' 외 3점' : '-'}</td>
       <td>약 ${areaLabel(h.areaM2)}</td>
       <td>${fmtDateTime(h.createdAt)}</td>
-    </tr>`).join('') || `<tr><td colspan="4" style="text-align:center; color:var(--text-faint);">지정 이력이 없습니다.</td></tr>`;
+    </tr>`).join('') || `<tr><td colspan="5" style="text-align:center; color:var(--text-faint);">지정 이력이 없습니다.</td></tr>`;
 
   return `
     <div>
       <div style="display:grid; grid-template-columns: 420px 1fr; gap:18px;">
         <div class="card" style="padding:18px;">
           <div style="font-size:14px; font-weight:700; margin-bottom:4px;">집결지 지정</div>
-          <div style="font-size:11.5px; color:var(--text-faint); margin-bottom:16px; line-height:1.6;">기본값은 대상자 개인별 근무지 좌표입니다. 특정 사건에 한해 별도 집결지를 지정하면 그 값이 우선 적용됩니다.</div>
+          <div style="font-size:11.5px; color:var(--text-faint); margin-bottom:16px; line-height:1.6;">기본값은 대상자 개인별 근무지 좌표입니다. 특정 사건에 한해 별도 집결지를 지정하면 그 값이 우선 적용됩니다. 집결지 1 저장 후에는 집결지 2를 추가로 지정할 수 있습니다.</div>
+          ${slotTabsHtml}
           <div style="display:flex; gap:6px; margin-bottom:16px;">
-            <button class="btn" id="useDefaultBtn" style="flex:1; padding:10px; font-size:12.5px; background:${!state.override ? 'var(--blue)' : 'var(--bg-card)'}; color:${!state.override ? '#fff' : 'var(--text-dim)'}; border:1.5px solid ${!state.override ? 'var(--blue)' : 'var(--border)'};">기본값 (근무지 좌표)</button>
-            <button class="btn" id="useOverrideBtn" style="flex:1; padding:10px; font-size:12.5px; background:${state.override ? 'var(--blue)' : 'var(--bg-card)'}; color:${state.override ? '#fff' : 'var(--text-dim)'}; border:1.5px solid ${state.override ? 'var(--blue)' : 'var(--border)'};">별도 지정</button>
+            <button class="btn" id="useDefaultBtn" style="flex:1; padding:10px; font-size:12.5px; background:${!s.override ? 'var(--blue)' : 'var(--bg-card)'}; color:${!s.override ? '#fff' : 'var(--text-dim)'}; border:1.5px solid ${!s.override ? 'var(--blue)' : 'var(--border)'};">${slot === 1 ? '기본값 (근무지 좌표)' : '비활성'}</button>
+            <button class="btn" id="useOverrideBtn" style="flex:1; padding:10px; font-size:12.5px; background:${s.override ? 'var(--blue)' : 'var(--bg-card)'}; color:${s.override ? '#fff' : 'var(--text-dim)'}; border:1.5px solid ${s.override ? 'var(--blue)' : 'var(--border)'};">별도 지정</button>
           </div>
           ${overridePanel}
         </div>
@@ -545,7 +568,7 @@ function renderGatheringTab() {
       <div class="card" style="margin-top:16px; overflow:hidden;">
         <div style="padding:12px 16px; border-bottom:1px solid var(--border); font-size:13px; font-weight:700;">사건별 지정 이력</div>
         <table>
-          <thead><tr><th>사건명</th><th>지정 구역 (4점)</th><th>면적</th><th>지정일시</th></tr></thead>
+          <thead><tr><th>집결지</th><th>사건명</th><th>지정 구역 (4점)</th><th>면적</th><th>지정일시</th></tr></thead>
           <tbody>${historyRows}</tbody>
         </table>
       </div>
@@ -567,21 +590,32 @@ function computeAreaM2(points) {
 }
 
 function bindGatheringTab() {
+  document.querySelectorAll('[data-slot-tab]').forEach((el) => el.addEventListener('click', () => {
+    if (el.disabled) return;
+    state.gatherSlot = Number(el.dataset.slotTab);
+    state.geocodeResults = [];
+    renderBody();
+  }));
+  const slot = state.gatherSlot;
   $('useDefaultBtn').addEventListener('click', async () => {
-    state.override = false;
-    await api('/gathering/mode', { method: 'POST', body: JSON.stringify({ override: false }) });
-    await loadTab('gathering');
+    const errBox = $('gatherErr');
+    try {
+      await api('/gathering/mode', { method: 'POST', body: JSON.stringify({ slot, override: false }) });
+      await loadTab('gathering');
+    } catch (e) { if (errBox) { errBox.textContent = e.message; errBox.style.display = 'block'; } else alert(e.message); }
   });
   $('useOverrideBtn').addEventListener('click', async () => {
-    state.override = true;
-    await api('/gathering/mode', { method: 'POST', body: JSON.stringify({ override: true }) });
-    await loadTab('gathering');
+    const errBox = $('gatherErr');
+    try {
+      await api('/gathering/mode', { method: 'POST', body: JSON.stringify({ slot, override: true }) });
+      await loadTab('gathering');
+    } catch (e) { if (errBox) { errBox.textContent = e.message; errBox.style.display = 'block'; } else alert(e.message); }
   });
   mountGatherMap();
   const resetBtn = $('resetPointsBtn');
-  if (resetBtn) resetBtn.addEventListener('click', (e) => { e.preventDefault(); state.gatherPoints = []; renderBody(); });
+  if (resetBtn) resetBtn.addEventListener('click', (e) => { e.preventDefault(); state.slots[slot].gatherPoints = []; renderBody(); });
   const eventInput = $('eventNameInput');
-  if (eventInput) eventInput.addEventListener('input', () => { state.eventName = eventInput.value; });
+  if (eventInput) eventInput.addEventListener('input', () => { state.slots[slot].eventName = eventInput.value; });
   const geoBtn = $('geocodeBtn');
   if (geoBtn) geoBtn.addEventListener('click', async () => {
     const q = $('geocodeInput').value.trim();
@@ -594,11 +628,12 @@ function bindGatheringTab() {
     } catch (e) { alert(e.message); }
   });
   document.querySelectorAll('[data-geopick]').forEach((el) => el.addEventListener('click', () => {
-    if (state.gatherPoints.length >= 4) return;
+    const cur = state.slots[state.gatherSlot];
+    if (cur.gatherPoints.length >= 4) return;
     const r = state.geocodeResults[Number(el.dataset.geopick)];
     if (!r) return;
-    state.gatherPoints = [...state.gatherPoints, { lat: r.lat, lng: r.lng }];
-    state.previewAreaM2 = computeAreaM2(state.gatherPoints);
+    cur.gatherPoints = [...cur.gatherPoints, { lat: r.lat, lng: r.lng }];
+    cur.previewAreaM2 = computeAreaM2(cur.gatherPoints);
     state.geocodeResults = [];
     state.mapCenter = [r.lat, r.lng];
     state.mapZoom = 16;
@@ -606,13 +641,14 @@ function bindGatheringTab() {
   }));
   const saveBtn = $('saveGatherBtn');
   if (saveBtn) saveBtn.addEventListener('click', async () => {
-    if (state.gatherPoints.length !== 4) return;
+    const cur = state.slots[slot];
+    if (cur.gatherPoints.length !== 4) return;
     const errBox = $('gatherErr');
     errBox.style.display = 'none';
     try {
-      await api('/gathering', { method: 'POST', body: JSON.stringify({ eventName: state.eventName, points: state.gatherPoints }) });
-      state.gatherPoints = [];
-      state.eventName = '';
+      await api('/gathering', { method: 'POST', body: JSON.stringify({ slot, eventName: cur.eventName, points: cur.gatherPoints }) });
+      cur.gatherPoints = [];
+      cur.eventName = '';
       await loadTab('gathering');
     } catch (e) {
       errBox.textContent = e.message;
@@ -771,9 +807,17 @@ async function loadTab(tab) {
     stagesByOrigin = data.stagesByOrigin;
   } else if (tab === 'gathering') {
     const data = await api('/gathering');
-    gatheringConfig = data.config;
+    gatheringConfigs = data.configs || [];
     gatheringHistory = data.history;
-    state.override = gatheringConfig.overrideActive;
+    // 탭을 다시 열었을 때 이전에 저장한 집결지가 화면에 그대로 보이도록 서버 저장값으로 편집 버퍼를 프리필한다
+    gatheringConfigs.forEach((c) => {
+      const slotState = state.slots[c.slot];
+      if (!slotState) return;
+      slotState.override = c.overrideActive;
+      slotState.gatherPoints = c.points || [];
+      slotState.previewAreaM2 = c.areaM2 || 0;
+      slotState.eventName = c.eventName || '';
+    });
   } else if (tab === 'accounts') {
     const data = await api('/admins');
     admins = data.admins;

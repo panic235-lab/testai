@@ -89,4 +89,21 @@ function listForPersonnel(personnelId, limit = 100) {
     .all(personnelId, limit);
 }
 
-module.exports = { sendToPersonnel, sendBulk, retry, listRecent, listFailed, listForPersonnel };
+/** 대원 본인이 발생시킨 이벤트(응소확인 버튼 클릭, GPS 집결완료 등)를 그 대원의 메시지함에
+ *  "답장"처럼 남긴다. 상황실→대원 발송(mockTransmit 실패 시뮬레이션 대상)과 달리 대원이 스스로
+ *  일으킨 이벤트이므로 발송 성공/실패 개념 없이 항상 기록된다. */
+function logPersonnelEvent(personnel, type, message) {
+  const id = insertLog({
+    personnelId: personnel.id,
+    name: personnel.name,
+    phone: personnel.phone,
+    type,
+    message,
+    status: '완료',
+    attempt: 1,
+    photoPath: null,
+  });
+  return { id };
+}
+
+module.exports = { sendToPersonnel, sendBulk, retry, listRecent, listFailed, listForPersonnel, logPersonnelEvent };

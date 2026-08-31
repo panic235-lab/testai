@@ -144,7 +144,7 @@
         </div>
         <div style="flex:1; overflow:auto;">
           <table>
-            <thead><tr><th>연번</th><th>소집수령</th><th>응소시간</th><th>조</th><th>부서명</th><th>계급</th><th>성명</th><th>응소반경</th></tr></thead>
+            <thead><tr><th>연번</th><th>소집수령</th><th>응소확인시간</th><th>응소시간</th><th>조</th><th>부서명</th><th>계급</th><th>성명</th><th>응소반경</th></tr></thead>
             <tbody id="csvBody"></tbody>
           </table>
         </div>
@@ -166,6 +166,9 @@
     </div>
 
   </div>
+
+  <!-- 대원이 응소확인/소집완료했을 때 상황실 쪽에도 실시간으로 알려주는 토스트 -->
+  <div id="toastStack" style="position:fixed; right:20px; bottom:20px; z-index:2000; display:flex; flex-direction:column; gap:8px; align-items:flex-end; pointer-events:none;"></div>
 
 <script>
 const $ = (id) => document.getElementById(id);
@@ -211,20 +214,31 @@ function renderMapLayer(data) {
   dashGatherLayer.clearLayers();
 
   const center = data.gatheringCenter || { lat: DASH_DEFAULT_CENTER[0], lng: DASH_DEFAULT_CENTER[1] };
+  // 집결지 1은 기존 파란색, 집결지 2는 보라색으로 구분해서 그린다(둘 다 활성화되면 두 구역 모두 표시).
+  const GATHER_SLOT_COLOR = { 1: DASH_BLUE, 2: 'oklch(0.55 0.18 300)' };
+  const areas = Array.isArray(data.gatheringAreas) && data.gatheringAreas.length > 0
+    ? data.gatheringAreas
+    : (Array.isArray(data.gatheringPoints) && data.gatheringPoints.length >= 3
+        ? [{ slot: 1, eventName: data.gatheringEventName, points: data.gatheringPoints, center: data.gatheringCenter }]
+        : []);
 
-  if (Array.isArray(data.gatheringPoints) && data.gatheringPoints.length >= 3) {
-    L.polygon(data.gatheringPoints.map((p) => [p.lat, p.lng]), {
-      color: DASH_BLUE, weight: 1.5, fillOpacity: 0.1, dashArray: '4 3',
-    }).addTo(dashGatherLayer);
-  }
-
-  L.marker([center.lat, center.lng], {
-    icon: L.divIcon({
-      className: '',
-      html: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M12 22s7-7.4 7-13a7 7 0 1 0-14 0c0 5.6 7 13 7 13z" stroke="${DASH_BLUE}" stroke-width="1.8"/><circle cx="12" cy="9" r="2.4" fill="${DASH_BLUE}"/></svg>`,
-      iconSize: [20, 20], iconAnchor: [10, 20],
-    }),
-  }).addTo(dashGatherLayer);
+  areas.forEach((area) => {
+    const color = GATHER_SLOT_COLOR[area.slot] || DASH_BLUE;
+    if (Array.isArray(area.points) && area.points.length >= 3) {
+      L.polygon(area.points.map((p) => [p.lat, p.lng]), {
+        color, weight: 1.5, fillOpacity: 0.1, dashArray: '4 3',
+      }).addTo(dashGatherLayer);
+    }
+    const c = area.center || center;
+    L.marker([c.lat, c.lng], {
+      icon: L.divIcon({
+        className: '',
+        html: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M12 22s7-7.4 7-13a7 7 0 1 0-14 0c0 5.6 7 13 7 13z" stroke="${color}" stroke-width="1.8"/><circle cx="12" cy="9" r="2.4" fill="${color}"/></svg>`,
+        iconSize: [20, 20], iconAnchor: [10, 20],
+      }),
+    }).bindTooltip(`집결지${area.slot} ${area.eventName ? '· ' + area.eventName : ''}`, { direction: 'top', offset: [0, -18] })
+      .addTo(dashGatherLayer);
+  });
 
   (data.markers || []).forEach((mk) => {
     if (mk.lat == null || mk.lng == null) return;
@@ -330,8 +344,8 @@ function updateDispatchButton() {
 }
 
 function renderCsv(rows) {
-  $('csvBody').innerHTML = rows.map((r) => `<tr><td>${r.no}</td><td>${r.recv}</td><td>${r.arr}</td><td>${r.team}조</td><td>${r.dept || '-'}</td><td>${r.rank || '-'}</td><td>${r.name}</td><td>${r.radius}m</td></tr>`).join('')
-    || '<tr><td colspan="8" style="color:var(--text-faint);">아직 응소(도착)한 인원이 없습니다.</td></tr>';
+  $('csvBody').innerHTML = rows.map((r) => `<tr><td>${r.no}</td><td>${r.recv}</td><td>${r.ack}</td><td>${r.arr}</td><td>${r.team}조</td><td>${r.dept || '-'}</td><td>${r.rank || '-'}</td><td>${r.name}</td><td>${r.radius}m</td></tr>`).join('')
+    || '<tr><td colspan="9" style="color:var(--text-faint);">아직 응소확인/도착한 인원이 없습니다.</td></tr>';
 }
 
 function renderFilters(active) {
@@ -388,7 +402,9 @@ function renderAll(data) {
     $('mapCard').style.display = 'block';
     $('csvCard').style.display = 'flex';
     $('emptyCard').style.display = 'none';
-    $('gatherLabel').textContent = data.gatheringEventName || '집결지';
+    $('gatherLabel').textContent = Array.isArray(data.gatheringAreas) && data.gatheringAreas.length > 1
+      ? data.gatheringAreas.map((a) => `집결지${a.slot}${a.eventName ? '(' + a.eventName + ')' : ''}`).join(' + ')
+      : (data.gatheringEventName || '집결지');
     renderMapLayer(data);
     renderCsv(data.csvRows);
   } else {
@@ -401,11 +417,41 @@ function renderAll(data) {
   renderList(data.active);
 }
 
+// 대원이 응소확인 버튼을 누르거나(ackAt) 실제 집결지에 도착(status→응소(도착))하면
+// "소집한 사람"(상황실) 쪽에도 즉시 알 수 있도록 토스트로 띄운다. 서버에 별도 이벤트 큐가 없으므로
+// 30초 폴링 결과를 이전 폴링과 비교해서(diff) 새로 바뀐 사람만 골라낸다.
+let prevActiveById = new Map();
+function showToast(text, kind) {
+  const el = document.createElement('div');
+  const isComplete = kind === 'complete';
+  const bg = isComplete ? 'oklch(0.3 0.08 150)' : 'oklch(0.32 0.08 80)';
+  const fg = isComplete ? 'oklch(0.88 0.1 150)' : 'oklch(0.9 0.1 80)';
+  el.style.cssText = `background:${bg}; color:${fg}; border:1px solid var(--border); border-radius:9px; padding:10px 14px; font-size:12.5px; font-weight:700; box-shadow:0 6px 20px rgba(0,0,0,.4); max-width:280px; opacity:0; transform:translateY(6px); transition:opacity .25s, transform .25s;`;
+  el.textContent = text;
+  $('toastStack').appendChild(el);
+  requestAnimationFrame(() => { el.style.opacity = '1'; el.style.transform = 'translateY(0)'; });
+  setTimeout(() => {
+    el.style.opacity = '0';
+    setTimeout(() => el.remove(), 300);
+  }, 5000);
+}
+function diffAndToast(activeList) {
+  activeList.forEach((p) => {
+    const prev = prevActiveById.get(p.id);
+    if (prev) {
+      if (!prev.ackAt && p.ackAt) showToast(`✓ ${p.name}(${p.team}조)님 응소확인`, 'ack');
+      if (prev.status !== '응소(도착)' && p.status === '응소(도착)') showToast(`🏁 ${p.name}(${p.team}조)님 소집완료 · 현장 도착`, 'complete');
+    }
+  });
+  prevActiveById = new Map(activeList.map((p) => [p.id, p]));
+}
+
 async function refresh() {
   const url = '/api/control/dashboard' + (stageParam ? `?stage=${encodeURIComponent(stageParam)}` : '');
   const res = await fetch(url);
   if (res.status === 401) { window.location.href = '/login.html'; return; }
   const data = await res.json();
+  diffAndToast(data.active || []);
   renderAll(data);
 }
 

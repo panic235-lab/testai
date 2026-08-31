@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS personnel (
   loc_updated_at TEXT,
   mission_updated_at TEXT,
   arrived_at TEXT,
+  ack_at TEXT,
   created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -71,8 +72,9 @@ CREATE TABLE IF NOT EXISTS origin_button (
   sort_order INTEGER DEFAULT 0
 );
 
+-- id=1: 집결지 1(최초 집결지), id=2: 집결지 2(집결지 1이 저장되어 있어야만 추가 가능, adminRepo에서 검증)
 CREATE TABLE IF NOT EXISTS gathering_config (
-  id INTEGER PRIMARY KEY CHECK (id = 1),
+  id INTEGER PRIMARY KEY CHECK (id IN (1, 2)),
   override_active INTEGER NOT NULL DEFAULT 0,
   event_name TEXT,
   points TEXT,
@@ -82,6 +84,7 @@ CREATE TABLE IF NOT EXISTS gathering_config (
 
 CREATE TABLE IF NOT EXISTS gathering_history (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
+  slot INTEGER NOT NULL DEFAULT 1,
   event_name TEXT,
   points TEXT,
   area_m2 REAL,
@@ -122,6 +125,7 @@ const personnelCols = db.prepare("PRAGMA table_info(personnel)").all().map((c) =
 if (!personnelCols.includes('dept')) db.exec('ALTER TABLE personnel ADD COLUMN dept TEXT');
 if (!personnelCols.includes('rank_title')) db.exec('ALTER TABLE personnel ADD COLUMN rank_title TEXT');
 if (!personnelCols.includes('arrived_at')) db.exec('ALTER TABLE personnel ADD COLUMN arrived_at TEXT');
+if (!personnelCols.includes('ack_at')) db.exec('ALTER TABLE personnel ADD COLUMN ack_at TEXT');
 
 const stateCols = db.prepare("PRAGMA table_info(situation_state)").all().map((c) => c.name);
 if (!stateCols.includes('origin')) db.exec('ALTER TABLE situation_state ADD COLUMN origin TEXT');
@@ -129,16 +133,51 @@ if (!stateCols.includes('origin')) db.exec('ALTER TABLE situation_state ADD COLU
 const notifCols = db.prepare("PRAGMA table_info(notification_log)").all().map((c) => c.name);
 if (!notifCols.includes('photo_path')) db.exec('ALTER TABLE notification_log ADD COLUMN photo_path TEXT');
 
+// gathering_config: 기존 DB는 CHECK(id=1)로 생성되어 있어 집결지 2(id=2) 추가가 막혀 있음 —
+// SQLite는 CHECK 제약을 ALTER로 바꿀 수 없으므로 새 테이블로 옮겨 심는 방식으로 1회 마이그레이션한다.
+const gatherTableInfo = db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'gathering_config'").get();
+if (gatherTableInfo && /CHECK\s*\(\s*id\s*=\s*1\s*\)/i.test(gatherTableInfo.sql)) {
+  db.exec('BEGIN');
+  try {
+    db.exec(`
+      CREATE TABLE gathering_config_new (
+        id INTEGER PRIMARY KEY CHECK (id IN (1, 2)),
+        override_active INTEGER NOT NULL DEFAULT 0,
+        event_name TEXT,
+        points TEXT,
+        area_m2 REAL,
+        updated_at TEXT
+      );
+    `);
+    db.exec('INSERT INTO gathering_config_new SELECT * FROM gathering_config;');
+    db.exec('DROP TABLE gathering_config;');
+    db.exec('ALTER TABLE gathering_config_new RENAME TO gathering_config;');
+    db.exec('COMMIT');
+  } catch (e) {
+    db.exec('ROLLBACK');
+    throw e;
+  }
+}
+
+// gathering_history 에 slot(1|2) 컬럼 추가 — 기존 이력은 전부 집결지 1로 간주
+const historyCols = db.prepare('PRAGMA table_info(gathering_history)').all().map((c) => c.name);
+if (!historyCols.includes('slot')) db.exec('ALTER TABLE gathering_history ADD COLUMN slot INTEGER NOT NULL DEFAULT 1');
+db.exec('UPDATE gathering_history SET slot = 1 WHERE slot IS NULL');
+
 // situation_state 는 항상 단일 행(id=1)을 유지
 const stateRow = db.prepare('SELECT * FROM situation_state WHERE id = 1').get();
 if (!stateRow) {
   db.prepare('INSERT INTO situation_state (id, stage, origin, activated_at) VALUES (1, NULL, NULL, NULL)').run();
 }
 
-// gathering_config 도 항상 단일 행(id=1) 유지
+// gathering_config 도 항상 슬롯별(id=1: 집결지1, id=2: 집결지2) 행을 유지
 const gatherRow = db.prepare('SELECT * FROM gathering_config WHERE id = 1').get();
 if (!gatherRow) {
   db.prepare('INSERT INTO gathering_config (id, override_active) VALUES (1, 0)').run();
+}
+const gatherRow2 = db.prepare('SELECT * FROM gathering_config WHERE id = 2').get();
+if (!gatherRow2) {
+  db.prepare('INSERT INTO gathering_config (id, override_active) VALUES (2, 0)').run();
 }
 
 // stage_master / origin_button 초기값 시딩 (비어있을 때만)

@@ -114,10 +114,20 @@ function deleteStageItem(id) {
 }
 
 // ---------- 집결지 지정 ----------
+// id=1(집결지 1) / id=2(집결지 2) 두 슬롯을 지원. 집결지 2는 집결지 1이 이미 저장되어 있어야만
+// 생성할 수 있으며(아래 saveGatheringArea 전제조건), 두 슬롯 모두 활성화된 경우 대원의 GPS가
+// 둘 중 한 곳에만 들어와도 응소(도착)로 인정한다(repo.getActiveGatheringAreas 참고).
+function normalizeSlot(slot) {
+  const n = Number(slot);
+  if (n !== 1 && n !== 2) throw new Error('집결지 슬롯은 1 또는 2만 가능합니다.');
+  return n;
+}
 
-function getGatheringConfig() {
-  const row = db.prepare('SELECT * FROM gathering_config WHERE id = 1').get();
+function getGatheringConfig(slot) {
+  const s = normalizeSlot(slot);
+  const row = db.prepare('SELECT * FROM gathering_config WHERE id = ?').get(s);
   return {
+    slot: s,
     overrideActive: !!row.override_active,
     eventName: row.event_name,
     points: row.points ? JSON.parse(row.points) : [],
@@ -126,13 +136,33 @@ function getGatheringConfig() {
   };
 }
 
-function setGatheringMode(overrideActive) {
-  db.prepare('UPDATE gathering_config SET override_active = ? WHERE id = 1').run(overrideActive ? 1 : 0);
-  return getGatheringConfig();
+/** 집결지 1, 2 설정을 한 번에 — 관리자 메뉴 재진입 시 저장된 값을 그대로 화면에 복원(프리필)하는 데 사용 */
+function getGatheringConfigs() {
+  return [getGatheringConfig(1), getGatheringConfig(2)];
 }
 
-/** 지도에서 지정한 4점을 저장 — 즉시 활성화되며 이력에도 기록 */
-function saveGatheringArea(eventName, points) {
+function setGatheringMode(slot, overrideActive) {
+  const s = normalizeSlot(slot);
+  if (s === 2 && overrideActive) {
+    const slot1 = getGatheringConfig(1);
+    if (!slot1.points || slot1.points.length === 0) {
+      throw new Error('집결지 2는 집결지 1이 먼저 저장되어 있어야 활성화할 수 있습니다.');
+    }
+  }
+  db.prepare('UPDATE gathering_config SET override_active = ? WHERE id = ?').run(overrideActive ? 1 : 0, s);
+  return getGatheringConfig(s);
+}
+
+/** 지도에서 지정한 4점을 저장 — 즉시 활성화되며 이력에도 기록.
+ *  집결지 2(slot=2)는 집결지 1에 이미 저장된 좌표가 있을 때만 저장할 수 있다(사용자 확정 요구사항). */
+function saveGatheringArea(slot, eventName, points) {
+  const s = normalizeSlot(slot);
+  if (s === 2) {
+    const slot1 = getGatheringConfig(1);
+    if (!slot1.points || slot1.points.length === 0) {
+      throw new Error('집결지 2는 집결지 1이 먼저 저장되어 있어야 추가할 수 있습니다.');
+    }
+  }
   if (!Array.isArray(points) || points.length !== 4) {
     throw new Error('지점은 정확히 4개여야 합니다.');
   }
@@ -145,25 +175,26 @@ function saveGatheringArea(eventName, points) {
   const pointsJson = JSON.stringify(points);
   const ts = now();
   db.prepare(
-    `UPDATE gathering_config SET override_active = 1, event_name = ?, points = ?, area_m2 = ?, updated_at = ? WHERE id = 1`
-  ).run(eventName || null, pointsJson, areaM2, ts);
+    `UPDATE gathering_config SET override_active = 1, event_name = ?, points = ?, area_m2 = ?, updated_at = ? WHERE id = ?`
+  ).run(eventName || null, pointsJson, areaM2, ts, s);
   db.prepare(
-    `INSERT INTO gathering_history (event_name, points, area_m2, created_at) VALUES (?, ?, ?, ?)`
-  ).run(eventName || null, pointsJson, areaM2, ts);
-  return getGatheringConfig();
+    `INSERT INTO gathering_history (slot, event_name, points, area_m2, created_at) VALUES (?, ?, ?, ?, ?)`
+  ).run(s, eventName || null, pointsJson, areaM2, ts);
+  return getGatheringConfig(s);
 }
 
-function listGatheringHistory() {
-  return db
-    .prepare('SELECT * FROM gathering_history ORDER BY id DESC LIMIT 50')
-    .all()
-    .map((r) => ({
-      id: r.id,
-      eventName: r.event_name,
-      points: JSON.parse(r.points),
-      areaM2: r.area_m2,
-      createdAt: r.created_at,
-    }));
+function listGatheringHistory(slot) {
+  const rows = slot
+    ? db.prepare('SELECT * FROM gathering_history WHERE slot = ? ORDER BY id DESC LIMIT 50').all(normalizeSlot(slot))
+    : db.prepare('SELECT * FROM gathering_history ORDER BY id DESC LIMIT 50').all();
+  return rows.map((r) => ({
+    id: r.id,
+    slot: r.slot || 1,
+    eventName: r.event_name,
+    points: JSON.parse(r.points),
+    areaM2: r.area_m2,
+    createdAt: r.created_at,
+  }));
 }
 
 // ---------- 관리자 계정 관리 ----------
@@ -223,6 +254,7 @@ module.exports = {
   addStageItem,
   deleteStageItem,
   getGatheringConfig,
+  getGatheringConfigs,
   setGatheringMode,
   saveGatheringArea,
   listGatheringHistory,

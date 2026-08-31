@@ -150,23 +150,29 @@ router.get('/geocode', async (req, res) => {
   }
 });
 
+// 집결지 1 / 집결지 2 슬롯 설정을 함께 반환 — 관리자 메뉴 재진입 시 저장된 값을 그대로 복원(프리필)하는 데 사용
 router.get('/gathering', (req, res) => {
   res.json({
-    config: adminRepo.getGatheringConfig(),
+    configs: adminRepo.getGatheringConfigs(),
     history: adminRepo.listGatheringHistory(),
   });
 });
 
 router.post('/gathering/mode', (req, res) => {
-  const { override } = req.body || {};
-  const config = adminRepo.setGatheringMode(!!override);
-  res.json({ ok: true, config });
+  const { slot, override } = req.body || {};
+  try {
+    const config = adminRepo.setGatheringMode(slot, !!override);
+    res.json({ ok: true, config });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
 });
 
+// 집결지 2는 집결지 1이 이미 저장되어 있어야만 저장 가능(adminRepo.saveGatheringArea 전제조건 검증)
 router.post('/gathering', (req, res) => {
-  const { eventName, points } = req.body || {};
+  const { slot, eventName, points } = req.body || {};
   try {
-    const config = adminRepo.saveGatheringArea(eventName, points);
+    const config = adminRepo.saveGatheringArea(slot, eventName, points);
     res.json({ ok: true, config });
   } catch (e) {
     res.status(400).json({ error: e.message });

@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: accio-inryeok-sanghwangsil
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      # node:sqlite 사용 — Render 기본 Node 이미지에서도 안전하게 동작하도록 버전/플래그 고정
+      - key: NODE_VERSION
+        value: 22.13.0
+      - key: NODE_OPTIONS
+        value: --experimental-sqlite
+      # 공개 링크로 공유되므로 기본값(0000 등) 대신 직접 값을 입력해 주세요 (Render가 배포 시 입력창을 띄워줌)
+      - key: CONTROL_PASSCODE
+        sync: false
+      - key: ADMIN_ID
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
